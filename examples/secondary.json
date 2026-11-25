@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dns": "127.0.0.1:15354",
+  "control": "127.0.0.1:18054",
+  "state_dir": "../var/secondary",
+  "frame_records": 3,
+  "max_udp": 1232,
+  "zones": [
+    {
+      "origin": "lab.test.",
+      "role": "secondary",
+      "source": "127.0.0.1:15353",
+      "retain": 2
+    }
+  ]
+}

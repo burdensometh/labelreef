@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "origin": "lab.test.",
+  "base": 2,
+  "next": 3,
+  "remove": [
+    {
+      "name": "head",
+      "type": "A",
+      "ttl": 60,
+      "data": "192.0.2.21"
+    }
+  ],
+  "add": [
+    {
+      "name": "head",
+      "type": "A",
+      "ttl": 60,
+      "data": "192.0.2.22"
+    }
+  ]
+}

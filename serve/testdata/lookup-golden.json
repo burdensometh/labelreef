@@ -1,0 +1,115 @@
+[
+  {
+    "case": "positive",
+    "name": "www.lab.test.",
+    "type": "A",
+    "code": "NOERROR",
+    "aa": true,
+    "answer": [
+      "www.lab.test.|A|120|192.0.2.10",
+      "www.lab.test.|A|120|192.0.2.11"
+    ],
+    "authority": [],
+    "additional": []
+  },
+  {
+    "case": "wildcard",
+    "name": "more.labels.lab.test.",
+    "type": "A",
+    "code": "NOERROR",
+    "aa": true,
+    "answer": [
+      "more.labels.lab.test.|A|90|192.0.2.99"
+    ],
+    "authority": [],
+    "additional": []
+  },
+  {
+    "case": "existing-empty",
+    "name": "branch.lab.test.",
+    "type": "A",
+    "code": "NOERROR",
+    "aa": true,
+    "answer": [],
+    "authority": [
+      "lab.test.|SOA|45|ns.lab.test. admin.lab.test. 4294967294 60 20 3600 45"
+    ],
+    "additional": []
+  },
+  {
+    "case": "missing",
+    "name": "nothing.branch.lab.test.",
+    "type": "A",
+    "code": "NXDOMAIN",
+    "aa": true,
+    "answer": [],
+    "authority": [
+      "lab.test.|SOA|45|ns.lab.test. admin.lab.test. 4294967294 60 20 3600 45"
+    ],
+    "additional": []
+  },
+  {
+    "case": "wildcard-nodata",
+    "name": "random.lab.test.",
+    "type": "AAAA",
+    "code": "NOERROR",
+    "aa": true,
+    "answer": [],
+    "authority": [
+      "lab.test.|SOA|45|ns.lab.test. admin.lab.test. 4294967294 60 20 3600 45"
+    ],
+    "additional": []
+  },
+  {
+    "case": "alias",
+    "name": "alias.lab.test.",
+    "type": "A",
+    "code": "NOERROR",
+    "aa": true,
+    "answer": [
+      "alias.lab.test.|CNAME|120|www.lab.test.",
+      "www.lab.test.|A|120|192.0.2.10",
+      "www.lab.test.|A|120|192.0.2.11"
+    ],
+    "authority": [],
+    "additional": []
+  },
+  {
+    "case": "referral",
+    "name": "www.child.lab.test.",
+    "type": "A",
+    "code": "NOERROR",
+    "aa": false,
+    "answer": [],
+    "authority": [
+      "child.lab.test.|NS|600|ns.child.lab.test.",
+      "child.lab.test.|NS|600|ns.external.example."
+    ],
+    "additional": [
+      "ns.child.lab.test.|A|600|192.0.2.61",
+      "ns.child.lab.test.|AAAA|600|2001:db8::61"
+    ]
+  },
+  {
+    "case": "parent-ds",
+    "name": "child.lab.test.",
+    "type": "DS",
+    "code": "NOERROR",
+    "aa": true,
+    "answer": [
+      "child.lab.test.|DS|600|18889 13 2 E06D44B80B55EDF1D4AA75BBEF7D9D6146F5429D4D5640EC2F726D9D20332285"
+    ],
+    "authority": [],
+    "additional": []
+  },
+  {
+    "case": "no-authority",
+    "name": "example.org.",
+    "type": "A",
+    "code": "REFUSED",
+    "aa": false,
+    "answer": [],
+    "authority": [],
+    "additional": []
+  }
+]

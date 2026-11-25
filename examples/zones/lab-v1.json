@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "origin": "Lab.Test.",
+  "records": [
+    {
+      "name": "@",
+      "type": "SOA",
+      "ttl": 600,
+      "data": "ns admin 4294967294 60 20 3600 45"
+    },
+    {
+      "name": "@",
+      "type": "NS",
+      "ttl": 600,
+      "data": "ns"
+    },
+    {
+      "name": "ns",
+      "type": "A",
+      "ttl": 300,
+      "data": "192.0.2.53"
+    },
+    {
+      "name": "ns",
+      "type": "AAAA",
+      "ttl": 300,
+      "data": "2001:db8::53"
+    },
+    {
+      "name": "www",
+      "type": "A",
+      "ttl": 120,
+      "data": "192.0.2.10"
+    },
+    {
+      "name": "www",
+      "type": "A",
+      "ttl": 120,
+      "data": "192.0.2.11"
+    },
+    {
+      "name": "alias",
+      "type": "CNAME",
+      "ttl": 120,
+      "data": "www"
+    },
+    {
+      "name": "remote",
+      "type": "CNAME",
+      "ttl": 120,
+      "data": "site.example."
+    },
+    {
+      "name": "*",
+      "type": "A",
+      "ttl": 90,
+      "data": "192.0.2.99"
+    },
+    {
+      "name": "land.deep.branch",
+      "type": "A",
+      "ttl": 90,
+      "data": "192.0.2.44"
+    },
+    {
+      "name": "child",
+      "type": "NS",
+      "ttl": 600,
+      "data": "ns.child"
+    },
+    {
+      "name": "child",
+      "type": "NS",
+      "ttl": 600,
+      "data": "ns.external.example."
+    },
+    {
+      "name": "child",
+      "type": "DS",
+      "ttl": 600,
+      "data": "18889 13 2 E06D44B80B55EDF1D4AA75BBEF7D9D6146F5429D4D5640EC2F726D9D20332285"
+    },
+    {
+      "name": "ns.child",
+      "type": "A",
+      "ttl": 600,
+      "data": "192.0.2.61"
+    },
+    {
+      "name": "ns.child",
+      "type": "AAAA",
+      "ttl": 600,
+      "data": "2001:db8::61"
+    },
+    {
+      "name": "www.child",
+      "type": "A",
+      "ttl": 90,
+      "data": "192.0.2.62"
+    },
+    {
+      "name": "@",
+      "type": "MX",
+      "ttl": 300,
+      "data": "10 mail"
+    },
+    {
+      "name": "mail",
+      "type": "AAAA",
+      "ttl": 300,
+      "data": "2001:db8::25"
+    },
+    {
+      "name": "_sip._tcp",
+      "type": "SRV",
+      "ttl": 300,
+      "data": "10 20 5060 sip"
+    },
+    {
+      "name": "sip",
+      "type": "A",
+      "ttl": 300,
+      "data": "192.0.2.45"
+    },
+    {
+      "name": "@",
+      "type": "CAA",
+      "ttl": 300,
+      "data": "0 issue \"ca.example\""
+    },
+    {
+      "name": "branch-status",
+      "type": "TXT",
+      "ttl": 120,
+      "data": "\"first segment\" \"second segment\""
+    },
+    {
+      "name": "bulletin",
+      "type": "TXT",
+      "ttl": 180,
+      "data": "\"atlas sample report data sample report data sample report data sample report data sample report data sample report data sample report data 0\""
+    },
+    {
+      "name": "bulletin",
+      "type": "TXT",
+      "ttl": 180,
+      "data": "\"boreal sample report data sample report data sample report data sample report data sample report data sample report data sample report data 1\""
+    },
+    {
+      "name": "bulletin",
+      "type": "TXT",
+      "ttl": 180,
+      "data": "\"cinder sample report data sample report data sample report data sample report data sample report data sample report data sample report data 2\""
+    },
+    {
+      "name": "bulletin",
+      "type": "TXT",
+      "ttl": 180,
+      "data": "\"delta sample report data sample report data sample report data sample report data sample report data sample report data sample report data 3\""
+    },
+    {
+      "name": "bulletin",
+      "type": "TXT",
+      "ttl": 180,
+      "data": "\"ember sample report data sample report data sample report data sample report data sample report data sample report data sample report data 4\""
+    },
+    {
+      "name": "bulletin",
+      "type": "TXT",
+      "ttl": 180,
+      "data": "\"fjord sample report data sample report data sample report data sample report data sample report data sample report data sample report data 5\""
+    }
+  ]
+}

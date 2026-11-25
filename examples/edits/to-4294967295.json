@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "origin": "lab.test.",
+  "base": 4294967294,
+  "next": 4294967295,
+  "remove": [
+    {
+      "name": "www",
+      "type": "A",
+      "ttl": 120,
+      "data": "192.0.2.10"
+    }
+  ],
+  "add": [
+    {
+      "name": "www",
+      "type": "A",
+      "ttl": 120,
+      "data": "192.0.2.12"
+    }
+  ]
+}

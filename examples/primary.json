@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "dns": "127.0.0.1:15353",
+  "control": "127.0.0.1:18053",
+  "state_dir": "../var/primary",
+  "frame_records": 3,
+  "max_udp": 1232,
+  "zones": [
+    {
+      "origin": "lab.test.",
+      "role": "primary",
+      "seed": "zones/lab-v1.json",
+      "retain": 2
+    },
+    {
+      "origin": "child.lab.test.",
+      "role": "primary",
+      "seed": "zones/child-v1.json",
+      "retain": 2
+    }
+  ]
+}

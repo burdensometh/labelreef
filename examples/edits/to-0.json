@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "origin": "lab.test.",
+  "base": 4294967295,
+  "next": 0,
+  "remove": [],
+  "add": [
+    {
+      "name": "wrapped",
+      "type": "TXT",
+      "ttl": 120,
+      "data": "\"sequence wrapped\""
+    }
+  ]
+}
