@@ -61,14 +61,14 @@ func (d JournalDelta) clone() JournalDelta {
 type Replay struct {
 	current zone.Record
 	set     map[zone.Record]struct{}
-	shapes  map[string]ownerShape
+	shapes  map[string]zone.OwnerShape
 }
 
 func NewReplay(base *zone.ZoneVersion) *Replay {
 	records := base.Records()
 	r := &Replay{
 		current: base.SOA(), set: make(map[zone.Record]struct{}, len(records)),
-		shapes: make(map[string]ownerShape),
+		shapes: make(map[string]zone.OwnerShape),
 	}
 	for _, record := range records {
 		if record.Type != zone.SOA {
@@ -76,10 +76,11 @@ func NewReplay(base *zone.ZoneVersion) *Replay {
 		}
 		shape := r.shapes[record.Name]
 		if shape == nil {
-			shape = make(ownerShape)
+			shape = make(zone.OwnerShape)
 			r.shapes[record.Name] = shape
 		}
-		shape.add(record)
+		// The base zone passed a full load, so Add cannot fail here.
+		_ = shape.Add(record)
 	}
 	return r
 }

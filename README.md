@@ -54,7 +54,7 @@ bin/labelreef compare received.json replayed.json
 
 | Path | Entry points |
 | --- | --- |
-| `zone/` | `New`, `Find`, `DecodeV1`, `EncodeV1` validate and index immutable zones, including empty ancestors and delegation cuts |
+| `zone/` | `New`, `Find`, `DecodeV1`, `EncodeV1` validate and index immutable zones, including empty ancestors and delegation cuts; `OwnerShape` and `IsDelegation` state the owner and RRset rules shared by full loads and journal replay |
 | `lookup/` | `Resolve` assembles authoritative data, alias chains, negatives and referrals |
 | `serial/` | `Advance`, `Replay.Apply`, `Store.Save` guard transitions and durable history |
 | `transfer/` | `Build`, `TransferCursor`, `Receiver.Feed` plan and apply framed AXFR and IXFR |

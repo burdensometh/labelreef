@@ -88,70 +88,61 @@ func (z *ZoneVersion) load(records []Record) error {
 		return Less(z.records[i], z.records[j])
 	})
 	for from := 0; from < len(z.records); {
-		r := z.records[from]
-		end := from + 1
-		for end < len(z.records) && z.records[end].Key() == r.Key() {
-			next := z.records[end]
-			if next.TTL != r.TTL {
-				return fmt.Errorf("%s %s: mixed RRset TTLs", r.Name, r.Type)
+		owner := z.records[from].Name
+		shape := make(OwnerShape)
+		n := z.insert(owner)
+		for from < len(z.records) && z.records[from].Name == owner {
+			r := z.records[from]
+			end := from + 1
+			for end < len(z.records) && z.records[end].Key() == r.Key() {
+				if z.records[end] == z.records[end-1] {
+					return fmt.Errorf("%s %s: duplicate record", r.Name, r.Type)
+				}
+				end++
 			}
-			if next == z.records[end-1] {
-				return fmt.Errorf("%s %s: duplicate record", r.Name, r.Type)
+			for _, record := range z.records[from:end] {
+				if err := shape.Add(record); err != nil {
+					return err
+				}
 			}
-			end++
+			if n.sets == nil {
+				n.sets = make(map[Type]RRset)
+			}
+			n.sets[r.Type] = RRset{Key: r.Key(), Records: z.records[from:end]}
+			from = end
 		}
-		n := z.insert(r.Name)
-		if n.sets == nil {
-			n.sets = make(map[Type]RRset)
-		}
-		n.sets[r.Type] = RRset{Key: r.Key(), Records: z.records[from:end]}
-		from = end
 	}
 	return nil
 }
 
-func validateNodes(n *node, below bool) error {
+// validateNodes assigns each node its kind and checks the owner rules. The
+// cutAbove argument is the ancestor half of IsDelegation memoized along the
+// walk: it holds exactly when an ancestor between n and the apex carries NS
+// records, so an NS-carrying node becomes a Cut exactly when IsDelegation
+// would report one.
+func validateNodes(n *node, cutAbove bool) error {
 	switch {
 	case n.kind == Apex:
 	case len(n.sets) == 0:
 		n.kind = Empty
-	case n.sets[NS].Records != nil && !below:
+	case n.sets[NS].Records != nil && !cutAbove:
 		n.kind = Cut
 	default:
 		n.kind = Ordinary
 	}
 
-	if n.kind == Cut || len(n.sets[CNAME].Records) != 0 {
-		types := make(map[Type]int, len(n.sets))
+	if len(n.sets) != 0 {
+		shape := make(OwnerShape, len(n.sets))
 		for typ, set := range n.sets {
-			types[typ] = len(set.Records)
+			shape[typ] = RRsetShape{Count: len(set.Records)}
 		}
-		if err := ValidateOwner(n.name, types, n.kind == Cut); err != nil {
+		if err := shape.Validate(n.name, n.kind == Cut); err != nil {
 			return err
 		}
 	}
 	for _, child := range n.children {
-		if err := validateNodes(child, below || n.kind == Cut); err != nil {
+		if err := validateNodes(child, cutAbove || n.kind == Cut); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-// ValidateOwner enforces rules shared by the loaded tree and journal replay.
-// Counts must contain exactly the nonempty RRset types.
-func ValidateOwner(name string, counts map[Type]int, delegation bool) error {
-	if n := counts[CNAME]; n != 0 && (len(counts) != 1 || n != 1) {
-		return fmt.Errorf("%s: CNAME requires a single record and cannot coexist with other data", name)
-	}
-	if delegation {
-		if strings.HasPrefix(name, "*.") {
-			return fmt.Errorf("%s: wildcard delegation", name)
-		}
-		for typ := range counts {
-			if typ != NS && typ != DS && typ != A && typ != AAAA {
-				return fmt.Errorf("%s: %s is invalid at a delegation", name, typ)
-			}
 		}
 	}
 	return nil

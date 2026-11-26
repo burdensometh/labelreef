@@ -7,113 +7,69 @@ import (
 	"labelreef/zone"
 )
 
-type rrsetShape struct {
-	count int
-	ttl   uint32
-}
-
-type ownerShape map[zone.Type]rrsetShape
-
-func (s ownerShape) add(record zone.Record) error {
-	set := s[record.Type]
-	if set.count > 0 && set.ttl != record.TTL {
-		return fmt.Errorf("%s %s: mixed RRset TTLs", record.Name, record.Type)
-	}
-	set.count++
-	set.ttl = record.TTL
-	s[record.Type] = set
-	return nil
-}
-
-func (s ownerShape) remove(record zone.Record) {
-	set := s[record.Type]
-	set.count--
-	if set.count == 0 {
-		delete(s, record.Type)
-	} else {
-		s[record.Type] = set
-	}
-}
-
-// checkShapes validates the prospective owner maps before applying either
-// direction of a journal step. A removed cut can expose another delegation.
-func (r *Replay) checkShapes(deletes, adds []zone.Record) (map[string]ownerShape, error) {
-	changes := make(map[string]ownerShape)
-	touch := func(name string) ownerShape {
+// checkShapes validates the prospective owner summaries before applying
+// either direction of a journal step, using the owner and RRset rules shared
+// with a full zone load, and reports the summaries to commit on success. The
+// replay state is left untouched when this returns an error. A removed cut
+// can expose a hidden delegation, so any change in NS coverage revalidates
+// every owner whose visibility changed.
+func (r *Replay) checkShapes(deletes, adds []zone.Record) (map[string]zone.OwnerShape, error) {
+	changes := make(map[string]zone.OwnerShape)
+	touch := func(name string) zone.OwnerShape {
 		if shape, ok := changes[name]; ok {
 			return shape
 		}
 		shape := maps.Clone(r.shapes[name])
 		if shape == nil {
-			shape = make(ownerShape)
+			shape = make(zone.OwnerShape)
 		}
 		changes[name] = shape
 		return shape
 	}
 	for _, record := range deletes {
-		touch(record.Name).remove(record)
+		touch(record.Name).Remove(record)
 	}
 	for _, record := range adds {
-		if err := touch(record.Name).add(record); err != nil {
+		if err := touch(record.Name).Add(record); err != nil {
 			return nil, err
 		}
 	}
 
 	origin := r.current.Name
-	at := func(name string) ownerShape {
+	at := func(name string) zone.OwnerShape {
 		if change, ok := changes[name]; ok {
 			return change
 		}
 		return r.shapes[name]
 	}
-	if at(origin)[zone.NS].count == 0 {
+	if !at(origin).HasNS() {
 		return nil, fmt.Errorf("%s: journal step would remove apex NS", origin)
+	}
+	exposed := func(name string) bool {
+		return zone.IsDelegation(name, origin, func(owner string) bool {
+			return at(owner).HasNS()
+		})
 	}
 
 	hasCutChange := false
 	for name, shape := range changes {
-		delegation := isDelegation(name, origin, at)
-		if err := shape.validate(name, delegation); err != nil {
+		if err := shape.Validate(name, exposed(name)); err != nil {
 			return nil, err
 		}
-		wasNS := r.shapes[name][zone.NS].count != 0
-		isNS := shape[zone.NS].count != 0
-		hasCutChange = hasCutChange || (name != origin && wasNS != isNS)
+		wasNS := r.shapes[name].HasNS()
+		hasCutChange = hasCutChange || (name != origin && wasNS != shape.HasNS())
 	}
 	if hasCutChange {
 		for name, shape := range r.shapes {
-			if _, touched := changes[name]; touched || shape[zone.NS].count == 0 {
+			if _, touched := changes[name]; touched || !shape.HasNS() {
 				continue
 			}
-			if isDelegation(name, origin, at) {
-				if err := shape.validate(name, true); err != nil {
+			if exposed(name) {
+				if err := shape.Validate(name, true); err != nil {
 					return nil, err
 				}
 			}
 		}
 	}
 	return changes, nil
-}
-
-func isDelegation(name, origin string, at func(string) ownerShape) bool {
-	if name == origin || at(name)[zone.NS].count == 0 {
-		return false
-	}
-	for ancestor := zone.Parent(name); ancestor != origin; ancestor = zone.Parent(ancestor) {
-		if ancestor == zone.Root || at(ancestor)[zone.NS].count > 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func (s ownerShape) validate(name string, delegation bool) error {
-	if !delegation && s[zone.CNAME].count == 0 {
-		return nil
-	}
-	types := make(map[zone.Type]int, len(s))
-	for typ, set := range s {
-		types[typ] = set.count
-	}
-	return zone.ValidateOwner(name, types, delegation)
 }
