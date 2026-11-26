@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "origin": "lab.test.",
+  "base": 4294967294,
+  "next": 5,
+  "preconditions": [
+    {
+      "name": "www",
+      "type": "A",
+      "ttl": 120,
+      "records": [
+        {
+          "name": "www",
+          "type": "A",
+          "ttl": 120,
+          "data": "192.0.2.11"
+        },
+        {
+          "name": "www",
+          "type": "A",
+          "ttl": 120,
+          "data": "192.0.2.10"
+        }
+      ]
+    }
+  ],
+  "remove": [],
+  "add": [
+    {
+      "name": "guarded",
+      "type": "TXT",
+      "ttl": 120,
+      "data": "\"rrset precondition held\""
+    }
+  ]
+}
