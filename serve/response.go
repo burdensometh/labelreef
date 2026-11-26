@@ -71,23 +71,18 @@ func encodeAnswer(q query, reply lookup.Answer, tcp bool, maxUDP int) []byte {
 
 func writeSets(w *wireWriter, sets []zone.RRset, limit int, count *uint16, required bool) bool {
 	for _, set := range sets {
-		at := w.checkpoint()
-		fits := len(set.Records) <= int(^uint16(0)-*count)
-		if fits {
-			for _, record := range set.Records {
-				w.record(record)
-				if len(w.data) > limit {
-					fits = false
-					break
-				}
-			}
-		}
-		if !fits {
-			w.restore(at)
+		// Budget at RRset granularity before appending any record. The sizer
+		// accounts for compression suffixes introduced inside this RRset, so
+		// a negative decision does not leave bytes or dictionary state to roll
+		// back.
+		if !w.rrsetFits(set, limit, *count) {
 			if required {
 				return false
 			}
 			continue
+		}
+		for _, record := range set.Records {
+			w.record(record)
 		}
 		*count += uint16(len(set.Records))
 	}

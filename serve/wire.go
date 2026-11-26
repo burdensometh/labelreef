@@ -160,7 +160,8 @@ type wireWriter struct {
 func newWriter(capacity int) *wireWriter {
 	return &wireWriter{
 		data: make([]byte, headerSize, max(capacity, headerSize)),
-		dict: make(map[string]uint16),
+		dict: make(map[string]uint16, 4),
+		keys: make([]string, 0, 4),
 	}
 }
 
