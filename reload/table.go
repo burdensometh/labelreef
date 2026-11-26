@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"labelreef/lookup"
 	"labelreef/serial"
 	"labelreef/zone"
 )
@@ -44,24 +43,29 @@ func statePath(dir, origin string) string {
 	return filepath.Join(dir, fmt.Sprintf("%x.json", digest))
 }
 
-func (t *table) route(question lookup.Question) *zone.ZoneVersion {
+// Route selects the active zone for a name using the longest active suffix.
+// A DS question at an exact delegation name stays with the parent so it can
+// answer authoritatively; every other question at or below a locally hosted
+// child zone is answered by that child. The same table instance serves every
+// hop of one lookup, so a resolution never mixes routing generations.
+func (t *table) Route(name string, typ zone.Type) *zone.ZoneVersion {
 	var closest *zone.ZoneVersion
-	for name := question.Name; ; name = zone.Parent(name) {
-		if e := t.entries[name]; e != nil {
+	for current := name; ; current = zone.Parent(current) {
+		if e := t.entries[current]; e != nil {
 			if z := e.snapshot.Current(); z != nil {
 				if closest == nil {
 					closest = z
-					if question.Type != zone.DS || name != question.Name {
+					if typ != zone.DS || current != name {
 						return closest
 					}
-				} else if match := z.Find(question.Name); match.Kind == zone.Cut && match.Cut == question.Name {
+				} else if match := z.Find(name); match.Kind == zone.Cut && match.Cut == name {
 					return z
 				} else {
 					return closest
 				}
 			}
 		}
-		if name == zone.Root {
+		if current == zone.Root {
 			return closest
 		}
 	}

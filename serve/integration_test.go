@@ -313,6 +313,81 @@ func TestConfigReplacementWhileServing(t *testing.T) {
 	}
 }
 
+func TestCrossZoneAliasOnActiveTable(t *testing.T) {
+	path, cfg := copyConfig(t)
+	manager := managerAt(t, path, cfg, reload.Boundary{})
+	server := testServer(t, manager, nil)
+	probe := func(name string, typ zone.Type) ProbeResult {
+		t.Helper()
+		result, err := Probe(context.Background(), name, typ, ProbeOptions{
+			Address: server.Address(), Timeout: 2 * time.Second,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	// A locally hosted child zone is reached through the parent's CNAME.
+	edit := serial.EditV1{Version: 1,
+		Origin: "lab.test.", Base: 4294967294, Next: 4294967295,
+		Add: []zone.RecordV1{{
+			Name: "hop", Type: "CNAME", TTL: 120, Data: "www.child.lab.test.",
+		}},
+	}
+	if _, err := manager.Edit(edit); err != nil {
+		t.Fatal(err)
+	}
+	chained := probe("hop.lab.test.", zone.A)
+	if chained.Code != "NOERROR" || !chained.Authoritative || chained.Truncated {
+		t.Fatalf("cross-zone chain failed: %+v", chained)
+	}
+	if len(chained.Answer) != 2 || chained.Answer[0].Type != "CNAME" ||
+		chained.Answer[1].Type != "A" || chained.Answer[1].Data != "192.0.2.162" {
+		t.Fatalf("expected CNAME then child A across zones, got %+v", chained.Answer)
+	}
+
+	// A negative answer reached inside the child carries the child zone SOA.
+	edit = serial.EditV1{Version: 1,
+		Origin: "lab.test.", Base: 4294967295, Next: 0,
+		Add: []zone.RecordV1{{
+			Name: "lost", Type: "CNAME", TTL: 120, Data: "missing.child.lab.test.",
+		}},
+	}
+	if _, err := manager.Edit(edit); err != nil {
+		t.Fatal(err)
+	}
+	negative := probe("lost.lab.test.", zone.A)
+	if negative.Code != "NXDOMAIN" || !negative.Authoritative || len(negative.Answer) != 1 ||
+		negative.Answer[0].Type != "CNAME" {
+		t.Fatalf("chain must be retained before the child NXDOMAIN: %+v", negative)
+	}
+	if len(negative.Authority) != 1 || negative.Authority[0].Name != "child.lab.test." ||
+		negative.Authority[0].Type != "SOA" {
+		t.Fatalf("negative answer must use the target zone SOA, got %+v", negative.Authority)
+	}
+
+	// Removing the child route leaves the delegation, and the chain ends in a
+	// non-authoritative referral while keeping its CNAME and the parent glue.
+	cfg.Zones = cfg.Zones[:1]
+	writeConfig(t, path, cfg)
+	if _, err := manager.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	referral := probe("hop.lab.test.", zone.A)
+	if referral.Code != "NOERROR" || referral.Authoritative || len(referral.Answer) != 1 ||
+		referral.Answer[0].Type != "CNAME" {
+		t.Fatalf("delegated target must preserve the chain non-authoritatively: %+v", referral)
+	}
+	if len(referral.Authority) != 2 || referral.Authority[0].Name != "child.lab.test." ||
+		referral.Authority[0].Type != "NS" {
+		t.Fatalf("referral NS set missing: %+v", referral.Authority)
+	}
+	if len(referral.Additional) != 2 {
+		t.Fatalf("parent delegation glue missing: %+v", referral.Additional)
+	}
+}
+
 func TestControlContract(t *testing.T) {
 	path, cfg := copyConfig(t)
 	manager := managerAt(t, path, cfg, reload.Boundary{})

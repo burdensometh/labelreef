@@ -56,18 +56,43 @@ type Answer struct {
 
 const maxAliases = 16
 
+// Table exposes the active routing table to a lookup. Every hop of one
+// resolution selects its zone through the same Table instance, so an answer
+// assembled across zones always reflects one atomically published generation.
+type Table interface {
+	Route(name string, typ zone.Type) *zone.ZoneVersion
+}
+
+// singleZone routes every in-zone name to the same immutable zone. It keeps the
+// historical one-zone entry point working through the shared chain engine.
+type singleZone struct {
+	zone *zone.ZoneVersion
+}
+
+func (s singleZone) Route(name string, _ zone.Type) *zone.ZoneVersion {
+	if zone.Within(name, s.zone.Origin()) {
+		return s.zone
+	}
+	return nil
+}
+
 func Resolve(z *zone.ZoneVersion, q Question) Answer {
-	if z == nil || q.Class != zone.ClassIN || !zone.Within(q.Name, z.Origin()) {
+	if z == nil {
+		return Answer{Code: Refused}
+	}
+	return ResolveTable(singleZone{zone: z}, q)
+}
+
+func ResolveTable(table Table, q Question) Answer {
+	if table == nil || q.Class != zone.ClassIN {
 		return Answer{Code: Refused}
 	}
 	if q.Type == zone.AXFR || q.Type == zone.IXFR || q.Type == zone.OPT {
 		return Answer{Code: Refused}
 	}
-	if match := z.Find(q.Name); match.Kind == zone.Cut {
-		if q.Name == match.Cut && q.Type == zone.DS {
-			return atCutDS(z, q.Name)
-		}
-		return referral(z, match.Cut)
+	first := table.Route(q.Name, q.Type)
+	if first == nil {
+		return Answer{Code: Refused}
 	}
 
 	answer := Answer{Authoritative: true}
@@ -78,10 +103,14 @@ func Resolve(z *zone.ZoneVersion, q Question) Answer {
 			return Answer{Code: Failure}
 		}
 		visited[name] = true
-		match := z.Find(name)
-		if !zone.Within(name, z.Origin()) {
+		z := table.Route(name, q.Type)
+		if z == nil {
+			// The chain leaves every locally hosted zone. Whatever was
+			// established so far (a CNAME chain, possibly ending at a
+			// delegation) is returned without inventing outside data.
 			break
 		}
+		match := z.Find(name)
 		if match.Kind == zone.Cut {
 			if q.Type == zone.DS && match.Cut == name {
 				ds := atCutDS(z, name)
@@ -90,10 +119,10 @@ func Resolve(z *zone.ZoneVersion, q Question) Answer {
 			} else {
 				edge := referral(z, match.Cut)
 				answer.Authority = edge.Authority
-				answer.Additional = edge.Additional
 				answer.GlueRequired = edge.GlueRequired
+				answer.Authoritative = false
 			}
-			return answer
+			break
 		}
 		owner := name
 		if match.Kind == zone.Missing {
@@ -124,8 +153,22 @@ func Resolve(z *zone.ZoneVersion, q Question) Answer {
 		answer.Answer = append(answer.Answer, rewrite(alias, name))
 		name = alias.Records[0].Data.Target
 	}
-	answer.Additional = addressSets(z, answer.Answer, "")
+	// Referral glue accompanies the authority NS set rather than any answer RR.
+	glueSource := answer.Answer
+	if answer.GlueRequired {
+		glueSource = answer.Authority
+	}
+	answer.Additional = answerAddresses(table, glueSource, referralCut(answer))
 	return answer
+}
+
+// referralCut reports the delegation owner when the answer ended at a cut, so
+// glue below that cut remains eligible even though the cut terminates authority.
+func referralCut(answer Answer) string {
+	if !answer.GlueRequired || len(answer.Authority) == 0 {
+		return ""
+	}
+	return answer.Authority[0].Name
 }
 
 func rewrite(set zone.RRset, name string) zone.RRset {
@@ -157,18 +200,25 @@ func atCutDS(z *zone.ZoneVersion, owner string) Answer {
 
 func referral(z *zone.ZoneVersion, owner string) Answer {
 	cut, _ := z.Delegation(owner)
-	authority := []zone.RRset{cut.Servers}
-	glue := addressSets(z, authority, owner)
-	return Answer{Authority: authority, Additional: glue, GlueRequired: true}
+	return Answer{Authority: []zone.RRset{cut.Servers}, GlueRequired: true}
 }
 
-func addressSets(z *zone.ZoneVersion, source []zone.RRset, delegation string) []zone.RRset {
+// answerAddresses resolves in-zone address records for NS/MX/SRV targets in the
+// answer section. Each target is routed through the active table, so chains
+// that crossed into another hosted zone still receive that zone's addresses.
+// It also supplies glue for a referral: the delegation owner exempts names
+// below the cut from the ordinary cut exclusion.
+func answerAddresses(table Table, source []zone.RRset, delegation string) []zone.RRset {
 	seen := make(map[string]bool)
 	var result []zone.RRset
 	for _, set := range source {
 		for _, record := range set.Records {
 			target := record.AdditionalTarget()
-			if target == "" || target == zone.Root || seen[target] || !zone.Within(target, z.Origin()) {
+			if target == "" || target == zone.Root || seen[target] {
+				continue
+			}
+			z := table.Route(target, zone.A)
+			if z == nil || !zone.Within(target, z.Origin()) {
 				continue
 			}
 			match := z.Find(target)

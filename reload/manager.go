@@ -131,7 +131,7 @@ func (m *Manager) Reload() (Status, error) {
 func (m *Manager) Status() Status { return m.active.Load().status() }
 
 func (m *Manager) Resolve(q lookup.Question) lookup.Answer {
-	return lookup.Resolve(m.active.Load().route(q), q)
+	return lookup.ResolveTable(m.active.Load(), q)
 }
 
 func (m *Manager) Export(origin string) (*zone.ZoneVersion, error) {

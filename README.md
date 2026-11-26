@@ -35,7 +35,7 @@ Start `examples/secondary.json` in its own process and drive replication with `c
 
 `ctl reload` and SIGHUP read the configured file again. Write a replacement file beside the live configuration and rename it into place before reloading. A valid replacement activates all candidate routes at once. Listener, timeout and state-directory settings take effect on daemon restart. A primary seed initializes a zone when it has neither live nor durable data. Use `ctl edit` for record-level changes and `ctl publish` for a full newer primary zone. A secondary stays inactive until it loads a seed, durable snapshot, or completed transfer.
 
-The service accepts numeric loopback listeners and transfer sources. The control interface is HTTP on a separate loopback port and accepts the daemon's literal host and port plus `X-Labelreef-Control: 1`. Edit and publish take JSON bodies. The intended deployment is a trusted local environment. Synchronization is initiated on demand and all content is unsigned. EDNS(0) negotiates UDP budgets. Supported stored records are A, AAAA, NS, CNAME, SOA, PTR, MX, TXT, SRV, DS and CAA. Zone selection uses the longest active suffix, with parent authority for DS at a delegation. Referrals carry in-zone address records for their name servers.
+The service accepts numeric loopback listeners and transfer sources. The control interface is HTTP on a separate loopback port and accepts the daemon's literal host and port plus `X-Labelreef-Control: 1`. Edit and publish take JSON bodies. The intended deployment is a trusted local environment. Synchronization is initiated on demand and all content is unsigned. EDNS(0) negotiates UDP budgets. Supported stored records are A, AAAA, NS, CNAME, SOA, PTR, MX, TXT, SRV, DS and CAA. Zone selection uses the longest active suffix, with parent authority for DS at a delegation. Referrals carry in-zone address records for their name servers. When one daemon hosts several zones, an ordinary query follows a CNAME into another locally hosted zone; every hop of one answer is routed through the same active table. A target that is only delegated keeps the accumulated chain and the referral, a cross-zone loop ends in SERVFAIL, and a negative answer reached in the target zone carries that zone's SOA.
 
 ## File formats
 
@@ -55,14 +55,14 @@ bin/labelreef compare received.json replayed.json
 | Path | Entry points |
 | --- | --- |
 | `zone/` | `New`, `Find`, `DecodeV1`, `EncodeV1` validate and index immutable zones, including empty ancestors and delegation cuts |
-| `lookup/` | `Resolve` assembles authoritative data, alias chains, negatives and referrals |
+| `lookup/` | `Resolve`, `ResolveTable` assembles authoritative data, alias chains across the active table, negatives and referrals |
 | `serial/` | `Advance`, `Replay.Apply`, `Store.Save` guard transitions and durable history |
 | `transfer/` | `Build`, `TransferCursor`, `Receiver.Feed` plan and apply framed AXFR and IXFR |
 | `serve/` | `Listen`, `Client.Fetch`, `Capture`, `ReplayTrace` handle the DNS wire and TCP transport |
 | `reload/` | `Manager.Reload`, `Edit`, `Publish`, `Sync` publish active generations and route changes |
 | `cmd/labelreef/` | Linux daemon, query and operational commands |
 
-A lookup holds one immutable zone. A transfer holds a single snapshot and advances its cursor after each complete frame write. A secondary stages through the terminal SOA and verifies its source and starting entry are still current before publication.
+A lookup routes every hop of one resolution through one immutable active table. A transfer holds a single snapshot and advances its cursor after each complete frame write. A secondary stages through the terminal SOA and verifies its source and starting entry are still current before publication.
 
 ```sh
 go test -count=1 ./...
