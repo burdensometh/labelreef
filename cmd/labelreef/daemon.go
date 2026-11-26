@@ -33,6 +33,9 @@ func configCommand(ctx context.Context, command string, args []string, out, stde
 		if err != nil {
 			return err
 		}
+		if err := manager.Check(); err != nil {
+			return err
+		}
 		return zone.EncodeJSON(out, manager.Status())
 	}
 	logger := slog.New(slog.NewJSONHandler(stderr, nil))

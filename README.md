@@ -59,10 +59,10 @@ bin/labelreef compare received.json replayed.json
 | `serial/` | `Advance`, `Replay.Apply`, `Store.Save` guard transitions and durable history |
 | `transfer/` | `Build`, `TransferCursor`, `Receiver.Feed` plan and apply framed AXFR and IXFR |
 | `serve/` | `Listen`, `Client.Fetch`, `Capture`, `ReplayTrace` handle the DNS wire and TCP transport |
-| `reload/` | `Manager.Reload`, `Edit`, `Publish`, `Sync` publish active generations and route changes |
+| `reload/` | `Manager.View` pins one active table for read-side `Resolve`, `Export`, `Transfer` and the read-only `Check`; `Manager.Reload`, `Edit`, `Publish`, `Sync` publish active generations and route changes |
 | `cmd/labelreef/` | Linux daemon, query and operational commands |
 
-A lookup holds one immutable zone. A transfer holds a single snapshot and advances its cursor after each complete frame write. A secondary stages through the terminal SOA and verifies its source and starting entry are still current before publication.
+A lookup holds one immutable zone. A read-side view pins one active table, so a read-only check observes a complete old or new table and never a mix, and open queries and transfers never follow a replacement. A transfer holds a single snapshot and advances its cursor after each complete frame write. A secondary stages through the terminal SOA and verifies its source and starting entry are still current before publication.
 
 ```sh
 go test -count=1 ./...

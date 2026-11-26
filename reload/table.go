@@ -44,6 +44,25 @@ func statePath(dir, origin string) string {
 	return filepath.Join(dir, fmt.Sprintf("%x.json", digest))
 }
 
+// exact returns the entry for a configured origin while it has an active zone.
+func (t *table) exact(origin string) *entry {
+	e := t.entries[origin]
+	if e == nil || e.snapshot.Current() == nil {
+		return nil
+	}
+	return e
+}
+
+// origins lists the configured origins in deterministic order.
+func (t *table) origins() []string {
+	origins := make([]string, 0, len(t.entries))
+	for origin := range t.entries {
+		origins = append(origins, origin)
+	}
+	sort.Strings(origins)
+	return origins
+}
+
 func (t *table) route(question lookup.Question) *zone.ZoneVersion {
 	var closest *zone.ZoneVersion
 	for name := question.Name; ; name = zone.Parent(name) {

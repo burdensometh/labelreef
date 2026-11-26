@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"labelreef/lookup"
 	"labelreef/serial"
 	"labelreef/transfer"
 	"labelreef/zone"
@@ -129,31 +128,6 @@ func (m *Manager) Reload() (Status, error) {
 }
 
 func (m *Manager) Status() Status { return m.active.Load().status() }
-
-func (m *Manager) Resolve(q lookup.Question) lookup.Answer {
-	return lookup.Resolve(m.active.Load().route(q), q)
-}
-
-func (m *Manager) Export(origin string) (*zone.ZoneVersion, error) {
-	name, err := zone.Name(origin)
-	if err != nil {
-		return nil, err
-	}
-	e := m.active.Load().entries[name]
-	if e == nil || e.snapshot.Current() == nil {
-		return nil, fmt.Errorf("%w or inactive: %s", ErrUnknown, name)
-	}
-	return e.snapshot.Current(), nil
-}
-
-func (m *Manager) Transfer(request transfer.Request) (*transfer.Plan, error) {
-	active := m.active.Load()
-	e := active.entries[request.Origin]
-	if e == nil || e.snapshot.Current() == nil {
-		return nil, ErrUnknown
-	}
-	return transfer.Build(e.snapshot, request)
-}
 
 func (m *Manager) Edit(edit serial.EditV1) (Receipt, error) {
 	name, err := zone.Name(edit.Origin)
