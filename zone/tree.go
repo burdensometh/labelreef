@@ -246,6 +246,30 @@ func (z *ZoneVersion) Records() []Record {
 	return append([]Record(nil), z.records...)
 }
 
+// SOAIndex returns the position of the unique apex SOA in the sorted record
+// sequence exposed by RecordAt. It binary-searches the (Name, Type) prefix of
+// the Less ordering, so it is logarithmic, allocation-free and does not copy
+// the zone or store extra state.
+func (z *ZoneVersion) SOAIndex() int {
+	name, typ := z.soa.Name, z.soa.Type
+	lo, hi := 0, len(z.records)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		r := z.records[mid]
+		if r.Name < name || (r.Name == name && r.Type < typ) {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
+// RecordAt returns the sorted record at index, in [0, RecordCount()). The
+// returned Record is a value copy; indexed access avoids materializing the
+// entire sorted slice for callers that only need a window.
+func (z *ZoneVersion) RecordAt(index int) Record { return z.records[index] }
+
 func (z *ZoneVersion) Set(owner string, typ Type) RRset {
 	n := z.exact(owner)
 	if n == nil {

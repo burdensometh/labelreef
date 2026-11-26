@@ -27,6 +27,64 @@ type Plan struct {
 	kind    Kind
 	serial  uint32
 	records []zone.Record
+
+	// full serves AXFR and IXFR-fallback windows directly from one pinned,
+	// immutable zone generation instead of copying the entire zone into
+	// records before the first frame. It is nil for eager IXFR plans.
+	stream *fullSequence
+}
+
+// fullSequence is the canonical AXFR RR order over a pinned ZoneVersion:
+//
+//	head SOA, every sorted non-SOA RR, tail SOA (identical to the head).
+//
+// The sequence has RecordCount()+1 logical records because the zone's own
+// sorted slice already contains the SOA once and that physical SOA position
+// is skipped between the two emitted bookends.
+type fullSequence struct {
+	zone     *zone.ZoneVersion
+	soa      zone.Record
+	soaIndex int
+	size     int // logical length: zone.RecordCount()+1
+}
+
+func newFullSequence(z *zone.ZoneVersion) *fullSequence {
+	return &fullSequence{
+		zone:     z,
+		soa:      z.SOA(),
+		soaIndex: z.SOAIndex(),
+		size:     z.RecordCount() + 1,
+	}
+}
+
+// at maps a logical AXFR position onto the pinned zone.
+//
+//	logical 0        -> head SOA
+//	logical 1..s     -> physical 0..s-1 (records sorting before the SOA)
+//	logical s+1..N-1 -> physical s+1..N-1 (records after the SOA)
+//	logical N        -> tail SOA
+//
+// where s is the physical SOA index and N is the physical record count.
+func (f *fullSequence) at(logical int) zone.Record {
+	n := f.zone.RecordCount()
+	switch {
+	case logical == 0 || logical == n:
+		return f.soa
+	case logical <= f.soaIndex:
+		return f.zone.RecordAt(logical - 1)
+	default:
+		return f.zone.RecordAt(logical)
+	}
+}
+
+// window returns an owned copy of count logical records starting at start.
+// The copy is bounded by the offered frame size, never the whole zone.
+func (f *fullSequence) window(start, count int) []zone.Record {
+	records := make([]zone.Record, count)
+	for i := range records {
+		records[i] = f.at(start + i)
+	}
+	return records
 }
 
 func Build(snapshot *serial.Snapshot, request Request) (*Plan, error) {
@@ -62,16 +120,11 @@ func Build(snapshot *serial.Snapshot, request Request) (*Plan, error) {
 	return plan, nil
 }
 
+// full pins the current generation but deliberately does not duplicate its
+// record slice up front; Cursor windows read through full.
 func (p *Plan) full(z *zone.ZoneVersion, kind Kind) {
 	p.kind = kind
-	p.records = make([]zone.Record, 0, z.RecordCount()+1)
-	p.records = append(p.records, z.SOA())
-	for _, record := range z.Records() {
-		if record.Type != zone.SOA {
-			p.records = append(p.records, record)
-		}
-	}
-	p.records = append(p.records, z.SOA())
+	p.stream = newFullSequence(z)
 }
 
 func (p *Plan) incremental(z *zone.ZoneVersion, history []serial.JournalDelta) {
@@ -90,7 +143,12 @@ func (p *Plan) Kind() Kind { return p.kind }
 
 func (p *Plan) Serial() uint32 { return p.serial }
 
-func (p *Plan) Count() int { return len(p.records) }
+func (p *Plan) Count() int {
+	if p.stream != nil {
+		return p.stream.size
+	}
+	return len(p.records)
+}
 
 type Position struct {
 	NextRecord int
@@ -111,15 +169,20 @@ func (c *TransferCursor) Position() Position { return c.position }
 
 func (c *TransferCursor) Done() bool { return c.position.NextRecord == c.plan.Count() }
 
-// Offer can be retried without changing the committed position.
+// Offer can be retried without changing the committed position. The returned
+// slice is owned by the caller and stays stable until the next Offer.
 func (c *TransferCursor) Offer(maxRecords int) []zone.Record {
 	c.offered = 0
+	total := c.plan.Count()
 	if maxRecords <= 0 || c.Done() {
 		return nil
 	}
 	start := c.position.NextRecord
-	count := min(maxRecords, len(c.plan.records)-start)
+	count := min(maxRecords, total-start)
 	c.offered = count
+	if c.plan.stream != nil {
+		return c.plan.stream.window(start, count)
+	}
 	return append([]zone.Record(nil), c.plan.records[start:start+count]...)
 }
 

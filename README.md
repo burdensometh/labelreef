@@ -71,4 +71,13 @@ go vet ./...
 go test -run '^$' -bench 'Benchmark(DeepName|RRsetEncoding|LargeSync)$' -benchmem ./...
 ```
 
+Large AXFR first-frame latency and allocations over a real loopback TCP socket, plus the lazy-plan versus whole-zone-copy allocation control, live in the standalone `axfrbench` package:
+
+```sh
+go test -run '^$' -bench 'BenchmarkAXFR' -benchmem ./axfrbench/
+```
+
+The AXFR planner pins the immutable `ZoneVersion` generation captured by `Build` and serves each frame from a bounded window (`SOA`, sorted non-SOA RRs, `SOA`), so updating the zone before a later frame cannot disturb an open transfer and the cost of the first frame no longer scales with zone size.
+
+
 Wire goldens and parsed query goldens live under `serve/testdata/`. Native tests control the pre-rename publication boundary, the pre-replacement routing boundary, the second transfer frame and a TCP disconnect within a length-framed message. Benchmarks cover depth-sensitive tree lookup, compressed encoding of a multi-record RRset, and AXFR versus IXFR on a zone with 8,000 generated owners.
