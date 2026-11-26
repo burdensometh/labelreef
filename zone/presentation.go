@@ -67,7 +67,7 @@ func parseFields(input string) ([]string, error) {
 func parseData(origin string, typ Type, f []string) (RData, error) {
 	count := map[Type]int{
 		A: 1, AAAA: 1, NS: 1, CNAME: 1, PTR: 1, MX: 2,
-		SOA: 7, SRV: 4, DS: 4, CAA: 3,
+		SOA: 7, SRV: 4, DNAME: 1, DS: 4, CAA: 3,
 	}
 	n, fixed := count[typ]
 	if !fixed && typ != TXT {
@@ -86,7 +86,7 @@ func parseData(origin string, typ Type, f []string) (RData, error) {
 			(typ == AAAA && !d.Addr.Is6())) {
 			err = fmt.Errorf("address family does not match %s", typ)
 		}
-	case NS, CNAME, PTR:
+	case NS, CNAME, PTR, DNAME:
 		d.Target, err = dataName(f[0], origin)
 	case MX:
 		d.Priority, err = uint16Field(f[0])
@@ -224,7 +224,7 @@ func (r Record) Presentation() string {
 	switch r.Type {
 	case A, AAAA:
 		return d.Addr.String()
-	case NS, CNAME, PTR:
+	case NS, CNAME, PTR, DNAME:
 		return d.Target
 	case MX:
 		return fmt.Sprintf("%d %s", d.Priority, d.Target)

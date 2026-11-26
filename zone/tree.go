@@ -121,12 +121,12 @@ func validateNodes(n *node, below bool) error {
 		n.kind = Ordinary
 	}
 
-	if n.kind == Cut || len(n.sets[CNAME].Records) != 0 {
+	if n.kind == Cut || len(n.sets[CNAME].Records) != 0 || len(n.sets[DNAME].Records) != 0 {
 		types := make(map[Type]int, len(n.sets))
 		for typ, set := range n.sets {
 			types[typ] = len(set.Records)
 		}
-		if err := ValidateOwner(n.name, types, n.kind == Cut); err != nil {
+		if err := ValidateOwner(n.name, types, n.kind == Apex, n.kind == Cut); err != nil {
 			return err
 		}
 	}
@@ -140,9 +140,20 @@ func validateNodes(n *node, below bool) error {
 
 // ValidateOwner enforces rules shared by the loaded tree and journal replay.
 // Counts must contain exactly the nonempty RRset types.
-func ValidateOwner(name string, counts map[Type]int, delegation bool) error {
+func ValidateOwner(name string, counts map[Type]int, apex, delegation bool) error {
 	if n := counts[CNAME]; n != 0 && (len(counts) != 1 || n != 1) {
 		return fmt.Errorf("%s: CNAME requires a single record and cannot coexist with other data", name)
+	}
+	if n := counts[DNAME]; n != 0 {
+		if n != 1 {
+			return fmt.Errorf("%s: DNAME requires a single record", name)
+		}
+		if apex {
+			return fmt.Errorf("%s: DNAME is not allowed at the zone apex", name)
+		}
+		if counts[CNAME] != 0 {
+			return fmt.Errorf("%s: DNAME cannot coexist with CNAME", name)
+		}
 	}
 	if delegation {
 		if strings.HasPrefix(name, "*.") {
@@ -230,6 +241,62 @@ func (z *ZoneVersion) Find(name string) Match {
 		match.Cut = n.name
 	}
 	return match
+}
+
+// DNameRedirect returns the DNAME that redirects a strict descendant of its
+// owner and the target name produced by RFC 6672 section 2.1. A DNAME whose
+// owner is qname itself is not a redirect. Delegations encountered before the
+// DNAME take precedence and are handled by the caller via Find.
+func (z *ZoneVersion) DNameRedirect(qname string) (RRset, string, bool) {
+	if !Within(qname, z.origin) || qname == z.origin {
+		return RRset{}, "", false
+	}
+	labels := z.relative(qname)
+	n := z.root
+	for i := len(labels) - 1; i >= 0; i-- {
+		if n.kind == Cut {
+			return RRset{}, "", false
+		}
+		child := n.children[labels[i]]
+		if child == nil {
+			wild := n.children["*"]
+			if wild == nil || wild.kind == Cut || i != 0 {
+				return RRset{}, "", false
+			}
+			return z.dnameAt(wild, qname, labels[i:i+1])
+		}
+		if i == 0 {
+			return RRset{}, "", false
+		}
+		n = child
+		if set := n.sets[DNAME]; len(set.Records) != 0 {
+			return z.dnameAt(n, qname, labels[:i])
+		}
+	}
+	return RRset{}, "", false
+}
+
+func (z *ZoneVersion) dnameAt(n *node, qname string, prefixLabels []string) (RRset, string, bool) {
+	set := NewRRset(n.sets[DNAME].Records)
+	if len(set.Records) == 0 {
+		return RRset{}, "", false
+	}
+	target := set.Records[0].Data.Target
+	replacement := strings.Join(prefixLabels, ".")
+	synthesized := replacement
+	if target != Root {
+		if synthesized != "" {
+			synthesized += "."
+		}
+		synthesized += target
+	} else if synthesized != "" {
+		synthesized += "."
+	}
+	name, err := Name(synthesized)
+	if err != nil || WireLength(name) > 255 {
+		return set, "", false
+	}
+	return set, name, true
 }
 
 func (z *ZoneVersion) Origin() string { return z.origin }

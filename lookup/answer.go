@@ -15,6 +15,7 @@ const (
 	NameError  Code = 3
 	NotImpl    Code = 4
 	Refused    Code = 5
+	YXDomain   Code = 6
 	BadVersion Code = 16
 )
 
@@ -32,6 +33,8 @@ func (c Code) String() string {
 		return "NOTIMP"
 	case Refused:
 		return "REFUSED"
+	case YXDomain:
+		return "YXDOMAIN"
 	case BadVersion:
 		return "BADVERS"
 	default:
@@ -93,6 +96,24 @@ func Resolve(z *zone.ZoneVersion, q Question) Answer {
 				answer.Additional = edge.Additional
 				answer.GlueRequired = edge.GlueRequired
 			}
+			return answer
+		}
+		if dname, target, ok := z.DNameRedirect(name); ok {
+			cname := zone.Record{
+				Name: name, Type: zone.CNAME, TTL: dname.Records[0].TTL,
+				Data: zone.RData{Target: target},
+			}
+			// RFC 6672 section 3.1: the synthesized CNAME precedes its DNAME.
+			answer.Answer = append(answer.Answer,
+				zone.NewRRset([]zone.Record{cname}), dname)
+			name = target
+			continue
+		} else if len(dname.Records) != 0 {
+			// The DNAME exists but the synthesized name would exceed the
+			// protocol name limit: YXDOMAIN with no illegal CNAME on the wire.
+			answer.Code = YXDomain
+			answer.Authority = []zone.RRset{dname}
+			answer.Additional = addressSets(z, answer.Answer, "")
 			return answer
 		}
 		owner := name

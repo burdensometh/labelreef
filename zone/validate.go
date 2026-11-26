@@ -14,7 +14,7 @@ func canonicalData(typ Type, d RData) (RData, error) {
 			return RData{}, fmt.Errorf("address family does not match %s", typ)
 		}
 		return RData{Addr: d.Addr}, nil
-	case NS, CNAME, PTR, MX, SRV:
+	case NS, CNAME, PTR, DNAME, MX, SRV:
 		target, err := dataName(d.Target, Root)
 		if err != nil {
 			return RData{}, err

@@ -19,6 +19,7 @@ const (
 	TXT   Type = 16
 	AAAA  Type = 28
 	SRV   Type = 33
+	DNAME Type = 39
 	DS    Type = 43
 	CAA   Type = 257
 
@@ -32,7 +33,7 @@ const ClassIN uint16 = 1
 
 var typeNames = map[Type]string{
 	A: "A", NS: "NS", CNAME: "CNAME", SOA: "SOA", PTR: "PTR", MX: "MX",
-	TXT: "TXT", AAAA: "AAAA", SRV: "SRV", DS: "DS", CAA: "CAA",
+	TXT: "TXT", AAAA: "AAAA", SRV: "SRV", DNAME: "DNAME", DS: "DS", CAA: "CAA",
 	OPT: "OPT", IXFR: "IXFR", AXFR: "AXFR", ANY: "ANY",
 }
 

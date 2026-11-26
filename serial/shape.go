@@ -73,7 +73,7 @@ func (r *Replay) checkShapes(deletes, adds []zone.Record) (map[string]ownerShape
 	hasCutChange := false
 	for name, shape := range changes {
 		delegation := isDelegation(name, origin, at)
-		if err := shape.validate(name, delegation); err != nil {
+		if err := shape.validate(name, name == origin, delegation); err != nil {
 			return nil, err
 		}
 		wasNS := r.shapes[name][zone.NS].count != 0
@@ -86,7 +86,7 @@ func (r *Replay) checkShapes(deletes, adds []zone.Record) (map[string]ownerShape
 				continue
 			}
 			if isDelegation(name, origin, at) {
-				if err := shape.validate(name, true); err != nil {
+				if err := shape.validate(name, name == origin, true); err != nil {
 					return nil, err
 				}
 			}
@@ -107,13 +107,13 @@ func isDelegation(name, origin string, at func(string) ownerShape) bool {
 	return true
 }
 
-func (s ownerShape) validate(name string, delegation bool) error {
-	if !delegation && s[zone.CNAME].count == 0 {
+func (s ownerShape) validate(name string, apex, delegation bool) error {
+	if !delegation && !apex && s[zone.CNAME].count == 0 && s[zone.DNAME].count == 0 {
 		return nil
 	}
 	types := make(map[zone.Type]int, len(s))
 	for typ, set := range s {
 		types[typ] = set.count
 	}
-	return zone.ValidateOwner(name, types, delegation)
+	return zone.ValidateOwner(name, types, apex, delegation)
 }

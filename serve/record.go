@@ -66,7 +66,7 @@ func (rr wireRecord) readData() (zone.RData, error) {
 		if err == nil {
 			d.Addr = netip.AddrFrom16([16]byte(b))
 		}
-	case zone.NS, zone.CNAME, zone.PTR:
+	case zone.NS, zone.CNAME, zone.PTR, zone.DNAME:
 		d.Target, err = r.target()
 	case zone.MX:
 		d.Priority, err = r.u16()
@@ -181,7 +181,7 @@ func (w *wireWriter) rdata(rr zone.Record) {
 	case zone.AAAA:
 		a := d.Addr.As16()
 		w.data = append(w.data, a[:]...)
-	case zone.NS, zone.CNAME, zone.PTR:
+	case zone.NS, zone.CNAME, zone.PTR, zone.DNAME:
 		w.name(d.Target, true)
 	case zone.MX:
 		w.u16(d.Priority)

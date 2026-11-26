@@ -102,3 +102,16 @@ func Labels(name string) []string {
 	}
 	return strings.Split(strings.TrimSuffix(name, "."), ".")
 }
+
+// WireLength reports the RFC 1035 wire size of a canonical name, including
+// the root label. Presentation escapes occupy one wire octet, not four.
+func WireLength(name string) int {
+	if name == Root {
+		return 1
+	}
+	length := 1
+	for _, label := range Labels(name) {
+		length += 1 + len(AppendLabelBytes(nil, label))
+	}
+	return length
+}
