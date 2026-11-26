@@ -48,6 +48,16 @@ type Fetcher interface {
 }
 
 func Open(path string, hooks Boundary) (*Manager, error) {
+	return openAt(path, hooks, true)
+}
+
+// Inspect opens a manager without persisting any retention trim, so diagnostic
+// commands can report the durable state without modifying it.
+func Inspect(path string, hooks Boundary) (*Manager, error) {
+	return openAt(path, hooks, false)
+}
+
+func openAt(path string, hooks Boundary, persist bool) (*Manager, error) {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -58,9 +68,14 @@ func Open(path string, hooks Boundary) (*Manager, error) {
 		return nil, err
 	}
 	manager.runtime = runtime
-	first, err := manager.prepare(nil, specs)
+	first, trimmed, err := manager.prepare(nil, specs)
 	if err != nil {
 		return nil, err
+	}
+	if persist {
+		if err := persistTrims(trimmed); err != nil {
+			return nil, err
+		}
 	}
 	manager.active.Store(first)
 	return manager, nil
@@ -76,11 +91,16 @@ func (m *Manager) read() (Runtime, []specification, error) {
 
 func (m *Manager) Runtime() Runtime { return m.runtime }
 
-func (m *Manager) prepare(old *table, specs []specification) (*table, error) {
+// prepare builds the candidate routing table and returns the entries whose
+// retained history shrank. A shrinking retention window is an eviction, not a
+// view change: the caller must make it durable before the new table activates,
+// or a later reload or restart could offer deltas the window already dropped.
+func (m *Manager) prepare(old *table, specs []specification) (*table, []*entry, error) {
 	next := &table{epoch: 1, entries: make(map[string]*entry, len(specs))}
 	if old != nil {
 		next.epoch = old.epoch + 1
 	}
+	var trimmed []*entry
 	for _, spec := range specs {
 		if old != nil && old.entries[spec.origin] != nil {
 			current := old.entries[spec.origin]
@@ -92,17 +112,37 @@ func (m *Manager) prepare(old *table, specs []specification) (*table, error) {
 				changed := *current
 				changed.specification = spec
 				changed.snapshot = current.snapshot.Limit(spec.retain)
+				if changed.snapshot.Retained() != current.snapshot.Retained() {
+					trimmed = append(trimmed, &changed)
+				}
 				next.entries[spec.origin] = &changed
 				continue
 			}
 		}
-		e, err := spec.open(m.runtime, m.hooks.BeforePublish)
+		e, evicted, err := spec.open(m.runtime, m.hooks.BeforePublish)
 		if err != nil {
-			return nil, fmt.Errorf("activate %s: %w", spec.origin, err)
+			return nil, nil, fmt.Errorf("activate %s: %w", spec.origin, err)
+		}
+		if evicted {
+			trimmed = append(trimmed, e)
 		}
 		next.entries[spec.origin] = e
 	}
-	return next, nil
+	return next, trimmed, nil
+}
+
+// persistTrims makes retention shrink durable. Each save is an ordinary state
+// publication at the active generation and serial; only history is shortened.
+// A failed save aborts activation so the daemon never serves an eviction that
+// the durable state still contradicts.
+func persistTrims(trimmed []*entry) error {
+	for _, e := range trimmed {
+		result := e.store.Save(e.snapshot)
+		if !result.Published {
+			return fmt.Errorf("persist retention for %s: %w", e.origin, result.Err)
+		}
+	}
+	return nil
 }
 
 func (m *Manager) Reload() (Status, error) {
@@ -115,7 +155,7 @@ func (m *Manager) Reload() (Status, error) {
 	if runtime != m.runtime {
 		return Status{}, fmt.Errorf("listener, state directory or budget change requires restart")
 	}
-	next, err := m.prepare(m.active.Load(), specs)
+	next, trimmed, err := m.prepare(m.active.Load(), specs)
 	if err != nil {
 		return Status{}, err
 	}
@@ -123,6 +163,9 @@ func (m *Manager) Reload() (Status, error) {
 		if err := hook(next.epoch); err != nil {
 			return Status{}, fmt.Errorf("config replacement: %w", err)
 		}
+	}
+	if err := persistTrims(trimmed); err != nil {
+		return Status{}, err
 	}
 	m.active.Store(next)
 	return next.status(), nil

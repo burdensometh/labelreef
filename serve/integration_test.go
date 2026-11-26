@@ -347,3 +347,76 @@ func TestControlContract(t *testing.T) {
 		t.Fatal("control failures modified the DNS view")
 	}
 }
+
+// A retention shrink evicts history for future transfers but must not disturb
+// a transfer that already captured its plan from the older snapshot.
+func TestRetentionShrinkKeepsInFlightTransfer(t *testing.T) {
+	path, cfg := copyConfig(t)
+	cfg.Zones = cfg.Zones[:1]
+	primary := managerAt(t, path, cfg, reload.Boundary{})
+	if _, err := primary.Edit(editFromFixture(t, "to-4294967295")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := primary.Edit(editFromFixture(t, "to-0")); err != nil {
+		t.Fatal(err)
+	}
+	blocked := make(chan struct{})
+	resume := make(chan struct{})
+	var resumed atomic.Bool
+	release := func() {
+		if resumed.CompareAndSwap(false, true) {
+			close(resume)
+		}
+	}
+	defer release()
+	source := testServer(t, primary, func(point FramePoint) error {
+		if point.Position.Frames == 1 {
+			close(blocked)
+			<-resume
+		}
+		return nil
+	})
+	// The transfer starts from the seed serial, which the retained two-delta
+	// history still covers as IXFR at this point.
+	base := exampleZone(t)
+	type outcome struct {
+		candidate transfer.Candidate
+		err       error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		client := Client{IOTimeout: 5 * time.Second}
+		candidate, err := client.Fetch(context.Background(), source.Address(), "lab.test.", base)
+		done <- outcome{candidate, err}
+	}()
+	select {
+	case <-blocked:
+	case got := <-done:
+		t.Fatalf("transfer completed before retention shrink: %v", got.err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("did not reach second frame")
+	}
+	cfg.Zones[0].Retain = 0
+	writeConfig(t, path, cfg)
+	if _, err := primary.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if got := primary.Status().Zones[0].Retained; got != 0 {
+		t.Fatalf("retention shrink did not evict: %d", got)
+	}
+	release()
+	got := <-done
+	if got.err != nil || got.candidate.Kind != transfer.Incremental ||
+		got.candidate.Zone == nil || got.candidate.Zone.Serial() != 0 {
+		t.Fatalf("in-flight transfer lost its captured view: %+v %v", got, got.err)
+	}
+	plan, err := primary.Transfer(transfer.Request{
+		Origin: "lab.test.", Type: zone.IXFR, HasSerial: true, Serial: base.Serial(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Kind() != transfer.Fallback {
+		t.Fatalf("new transfer after shrink did not fall back: %s", plan.Kind())
+	}
+}

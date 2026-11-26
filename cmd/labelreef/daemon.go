@@ -29,7 +29,7 @@ func configCommand(ctx context.Context, command string, args []string, out, stde
 		return fmt.Errorf("%w: -config FILE is required", errUsage)
 	}
 	if command == "check" {
-		manager, err := reload.Open(*config, reload.Boundary{})
+		manager, err := reload.Inspect(*config, reload.Boundary{})
 		if err != nil {
 			return err
 		}

@@ -194,26 +194,30 @@ func Loopback(value string) (netip.AddrPort, error) {
 	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()), nil
 }
 
-func (s specification) open(runtime Runtime, hook func(serial.PublishPoint) error) (*entry, error) {
+// open loads the durable snapshot and applies the configured retention window.
+// trimmed reports that the window discarded durable history, so the caller must
+// persist the shortened snapshot before the eviction is considered complete.
+func (s specification) open(runtime Runtime, hook func(serial.PublishPoint) error) (*entry, bool, error) {
 	store := serial.Store{Path: statePath(runtime.StateDir, s.origin), BeforePublish: hook}
 	snapshot, err := store.Load(s.origin)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if snapshot == nil && s.seed != "" {
 		f, err := os.Open(s.seed)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		z, err := zone.DecodeV1(f)
 		f.Close()
 		if err != nil {
-			return nil, fmt.Errorf("read seed %s: %w", s.seed, err)
+			return nil, false, fmt.Errorf("read seed %s: %w", s.seed, err)
 		}
 		if z.Origin() != s.origin {
-			return nil, fmt.Errorf("seed %s has origin %s, expected %s", s.seed, z.Origin(), s.origin)
+			return nil, false, fmt.Errorf("seed %s has origin %s, expected %s", s.seed, z.Origin(), s.origin)
 		}
 		snapshot = serial.Seed(z)
 	}
-	return &entry{specification: s, snapshot: snapshot.Limit(s.retain), store: store}, nil
+	limited := snapshot.Limit(s.retain)
+	return &entry{specification: s, snapshot: limited, store: store}, snapshot.Retained() != limited.Retained(), nil
 }
