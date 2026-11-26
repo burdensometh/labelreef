@@ -1,0 +1,181 @@
+{
+  "version": 2,
+  "origin": "lab.test.",
+  "rrsets": [
+    {
+      "name": "*.lab.test.",
+      "type": "A",
+      "ttl": 90,
+      "records": [
+        "192.0.2.99"
+      ]
+    },
+    {
+      "name": "_sip._tcp.lab.test.",
+      "type": "SRV",
+      "ttl": 300,
+      "records": [
+        "10 20 5060 sip.lab.test."
+      ]
+    },
+    {
+      "name": "alias.lab.test.",
+      "type": "CNAME",
+      "ttl": 120,
+      "records": [
+        "www.lab.test."
+      ]
+    },
+    {
+      "name": "branch-status.lab.test.",
+      "type": "TXT",
+      "ttl": 120,
+      "records": [
+        "\"first segment\" \"second segment\""
+      ]
+    },
+    {
+      "name": "bulletin.lab.test.",
+      "type": "TXT",
+      "ttl": 180,
+      "records": [
+        "\"atlas sample report data sample report data sample report data sample report data sample report data sample report data sample report data 0\"",
+        "\"boreal sample report data sample report data sample report data sample report data sample report data sample report data sample report data 1\"",
+        "\"cinder sample report data sample report data sample report data sample report data sample report data sample report data sample report data 2\"",
+        "\"delta sample report data sample report data sample report data sample report data sample report data sample report data sample report data 3\"",
+        "\"ember sample report data sample report data sample report data sample report data sample report data sample report data sample report data 4\"",
+        "\"fjord sample report data sample report data sample report data sample report data sample report data sample report data sample report data 5\""
+      ]
+    },
+    {
+      "name": "child.lab.test.",
+      "type": "NS",
+      "ttl": 600,
+      "records": [
+        "ns.child.lab.test.",
+        "ns.external.example."
+      ]
+    },
+    {
+      "name": "child.lab.test.",
+      "type": "DS",
+      "ttl": 600,
+      "records": [
+        "18889 13 2 E06D44B80B55EDF1D4AA75BBEF7D9D6146F5429D4D5640EC2F726D9D20332285"
+      ]
+    },
+    {
+      "name": "lab.test.",
+      "type": "NS",
+      "ttl": 600,
+      "records": [
+        "ns.lab.test."
+      ]
+    },
+    {
+      "name": "lab.test.",
+      "type": "SOA",
+      "ttl": 600,
+      "records": [
+        "ns.lab.test. admin.lab.test. 4294967294 60 20 3600 45"
+      ]
+    },
+    {
+      "name": "lab.test.",
+      "type": "MX",
+      "ttl": 300,
+      "records": [
+        "10 mail.lab.test."
+      ]
+    },
+    {
+      "name": "lab.test.",
+      "type": "CAA",
+      "ttl": 300,
+      "records": [
+        "0 issue \"ca.example\""
+      ]
+    },
+    {
+      "name": "land.deep.branch.lab.test.",
+      "type": "A",
+      "ttl": 90,
+      "records": [
+        "192.0.2.44"
+      ]
+    },
+    {
+      "name": "mail.lab.test.",
+      "type": "AAAA",
+      "ttl": 300,
+      "records": [
+        "2001:db8::25"
+      ]
+    },
+    {
+      "name": "ns.child.lab.test.",
+      "type": "A",
+      "ttl": 600,
+      "records": [
+        "192.0.2.61"
+      ]
+    },
+    {
+      "name": "ns.child.lab.test.",
+      "type": "AAAA",
+      "ttl": 600,
+      "records": [
+        "2001:db8::61"
+      ]
+    },
+    {
+      "name": "ns.lab.test.",
+      "type": "A",
+      "ttl": 300,
+      "records": [
+        "192.0.2.53"
+      ]
+    },
+    {
+      "name": "ns.lab.test.",
+      "type": "AAAA",
+      "ttl": 300,
+      "records": [
+        "2001:db8::53"
+      ]
+    },
+    {
+      "name": "remote.lab.test.",
+      "type": "CNAME",
+      "ttl": 120,
+      "records": [
+        "site.example."
+      ]
+    },
+    {
+      "name": "sip.lab.test.",
+      "type": "A",
+      "ttl": 300,
+      "records": [
+        "192.0.2.45"
+      ]
+    },
+    {
+      "name": "www.child.lab.test.",
+      "type": "A",
+      "ttl": 90,
+      "records": [
+        "192.0.2.62"
+      ]
+    },
+    {
+      "name": "www.lab.test.",
+      "type": "A",
+      "ttl": 120,
+      "records": [
+        "192.0.2.10",
+        "192.0.2.11"
+      ]
+    }
+  ]
+}

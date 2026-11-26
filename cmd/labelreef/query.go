@@ -52,24 +52,34 @@ type zoneSummary struct {
 	Nodes   int    `json:"nodes"`
 }
 
-func zoneCommand(command string, args []string, out io.Writer) error {
-	if len(args) != 1 {
-		return fmt.Errorf("%w: %s requires exactly one v1 file", errUsage, command)
+func zoneCommand(command string, args []string, out, stderr io.Writer) error {
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	format := flags.String("format", "v1", "zone output format: v1 or v2")
+	if err := flags.Parse(args); err != nil {
+		return err
 	}
-	file, err := os.Open(args[0])
+	if flags.NArg() != 1 {
+		return fmt.Errorf("%w: %s requires exactly one zone file", errUsage, command)
+	}
+	file, err := os.Open(flags.Arg(0))
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	version, err := zone.DecodeV1(file)
+	version, sourceFormat, err := zone.DecodeZone(file)
 	if err != nil {
 		return err
 	}
 	if command == "rewrite" {
-		return zone.EncodeV1(out, version)
+		encode, err := zoneEncoder(*format)
+		if err != nil {
+			return err
+		}
+		return encode(out, version)
 	}
 	return zone.EncodeJSON(out, zoneSummary{
-		Format: 1, Origin: version.Origin(), Serial: version.Serial(),
+		Format: sourceFormat, Origin: version.Origin(), Serial: version.Serial(),
 		Records: version.RecordCount(), Nodes: version.NodeCount(),
 	})
 }

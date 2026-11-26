@@ -205,7 +205,7 @@ func (s specification) open(runtime Runtime, hook func(serial.PublishPoint) erro
 		if err != nil {
 			return nil, err
 		}
-		z, err := zone.DecodeV1(f)
+		z, _, err := zone.DecodeZone(f)
 		f.Close()
 		if err != nil {
 			return nil, fmt.Errorf("read seed %s: %w", s.seed, err)

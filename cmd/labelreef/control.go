@@ -20,6 +20,7 @@ func controlCommand(ctx context.Context, args []string, out, stderr io.Writer) e
 	flags := flag.NewFlagSet("ctl", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	address := flags.String("address", "", "numeric loopback control IP:port")
+	format := flags.String("format", "v1", "export output format: v1 or v2")
 	timeout := flags.Duration("timeout", 20*time.Second, "total request timeout")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -32,7 +33,7 @@ func controlCommand(ctx context.Context, args []string, out, stderr io.Writer) e
 		return err
 	}
 	action, params := flags.Arg(0), flags.Args()[1:]
-	verb, path, err := controlRoute(action, params)
+	verb, path, err := controlRoute(action, params, *format)
 	if err != nil {
 		return err
 	}
@@ -63,7 +64,11 @@ func controlCommand(ctx context.Context, args []string, out, stderr io.Writer) e
 		if err != nil {
 			return err
 		}
-		return zone.EncodeV1(out, snapshot)
+		encode, err := zoneEncoder(*format)
+		if err != nil {
+			return err
+		}
+		return encode(out, snapshot)
 	}
 	var value any
 	switch action {
@@ -80,7 +85,7 @@ func controlCommand(ctx context.Context, args []string, out, stderr io.Writer) e
 	return zone.EncodeJSON(out, value)
 }
 
-func controlRoute(action string, args []string) (string, string, error) {
+func controlRoute(action string, args []string, format string) (string, string, error) {
 	switch action {
 	case "status":
 		if len(args) == 0 {
@@ -94,14 +99,18 @@ func controlRoute(action string, args []string) (string, string, error) {
 		if len(args) == 1 {
 			return http.MethodPost, "/v1/" + action, nil
 		}
-	case "sync", "export":
+	case "sync":
 		if len(args) == 1 {
 			query := url.Values{"origin": []string{args[0]}}
-			method := http.MethodPost
-			if action == "export" {
-				method = http.MethodGet
+			return http.MethodPost, "/v1/" + action + "?" + query.Encode(), nil
+		}
+	case "export":
+		if len(args) == 1 {
+			if format != "v1" && format != "v2" {
+				return "", "", fmt.Errorf("%w: format must be v1 or v2", errUsage)
 			}
-			return method, "/v1/" + action + "?" + query.Encode(), nil
+			query := url.Values{"origin": []string{args[0]}, "format": []string{format}}
+			return http.MethodGet, "/v1/export?" + query.Encode(), nil
 		}
 	}
 	return "", "", fmt.Errorf("%w: unexpected action or arguments for %q", errUsage, action)

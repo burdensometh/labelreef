@@ -57,15 +57,40 @@ func (c Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !method(w, r, http.MethodGet) {
 			return
 		}
-		origin, parseErr := onlyOrigin(r.URL.RawQuery)
+		query, parseErr := url.ParseQuery(r.URL.RawQuery)
 		if parseErr != nil {
-			writeControlError(w, http.StatusBadRequest, parseErr.Error())
+			writeControlError(w, http.StatusBadRequest, "expected exactly one origin")
+			return
+		}
+		if len(query["origin"]) != 1 || query.Get("origin") == "" {
+			writeControlError(w, http.StatusBadRequest, "expected exactly one origin")
+			return
+		}
+		format := "v1"
+		if values, present := query["format"]; present {
+			if len(values) != 1 {
+				writeControlError(w, http.StatusBadRequest, "expected one format value")
+				return
+			}
+			format = values[0]
+			delete(query, "format")
+		}
+		if len(query) != 1 {
+			writeControlError(w, http.StatusBadRequest, "expected exactly one origin")
 			return
 		}
 		var z *zone.ZoneVersion
-		z, err = c.Manager.Export(origin)
+		z, err = c.Manager.Export(query.Get("origin"))
 		if err == nil {
-			result = z.V1()
+			switch format {
+			case "v1":
+				result = z.V1()
+			case "v2":
+				result = z.V2()
+			default:
+				writeControlError(w, http.StatusBadRequest, "format must be v1 or v2")
+				return
+			}
 		}
 	case "/v1/reload":
 		if !method(w, r, http.MethodPost) {
@@ -86,7 +111,7 @@ func (c Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var z *zone.ZoneVersion
-		z, err = zone.DecodeV1(r.Body)
+		z, _, err = zone.DecodeZone(r.Body)
 		if err == nil {
 			result, err = c.Manager.Publish(z)
 		}
@@ -209,7 +234,8 @@ func ReadControlZone(reply *http.Response) (*zone.ZoneVersion, error) {
 	if err := checkControlReply(reply); err != nil {
 		return nil, err
 	}
-	return zone.DecodeV1(reply.Body)
+	z, _, err := zone.DecodeZone(reply.Body)
+	return z, err
 }
 
 func checkControlReply(reply *http.Response) error {

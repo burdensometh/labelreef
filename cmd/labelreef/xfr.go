@@ -19,14 +19,19 @@ func xfrCommand(ctx context.Context, args []string, out, stderr io.Writer) error
 	flags := flag.NewFlagSet("xfr", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	target := flags.String("address", "", "numeric loopback DNS IP:port")
-	basePath := flags.String("base", "", "v1 receiver zone (requests IXFR)")
+	basePath := flags.String("base", "", "v1 or v2 receiver zone (requests IXFR)")
 	trace := flags.String("trace", "", "write a new v1 transfer recording")
+	format := flags.String("format", "v1", "zone output format: v1 or v2")
 	timeout := flags.Duration("timeout", 15*time.Second, "total transfer timeout")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 || *timeout <= 0 || *timeout > 5*time.Minute {
 		return fmt.Errorf("%w: xfr requires ORIGIN and a positive bounded timeout", errUsage)
+	}
+	encode, err := zoneEncoder(*format)
+	if err != nil {
+		return err
 	}
 	address, err := reload.Loopback(*target)
 	if err != nil {
@@ -54,18 +59,23 @@ func xfrCommand(ctx context.Context, args []string, out, stderr io.Writer) error
 	if err != nil {
 		return err
 	}
-	return zone.EncodeV1(out, result.Zone)
+	return encode(out, result.Zone)
 }
 
 func replayCommand(args []string, out, stderr io.Writer) error {
 	flags := flag.NewFlagSet("replay", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	basePath := flags.String("base", "", "v1 receiver zone for an IXFR trace")
+	basePath := flags.String("base", "", "v1 or v2 receiver zone for an IXFR trace")
+	format := flags.String("format", "v1", "zone output format: v1 or v2")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 {
 		return fmt.Errorf("%w: replay requires exactly one trace file", errUsage)
+	}
+	encode, err := zoneEncoder(*format)
+	if err != nil {
+		return err
 	}
 	base, err := loadBase(*basePath)
 	if err != nil {
@@ -80,7 +90,7 @@ func replayCommand(args []string, out, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return zone.EncodeV1(out, result.Zone)
+	return encode(out, result.Zone)
 }
 
 func loadBase(path string) (*zone.ZoneVersion, error) {
@@ -92,7 +102,20 @@ func loadBase(path string) (*zone.ZoneVersion, error) {
 		return nil, err
 	}
 	defer base.Close()
-	return zone.DecodeV1(base)
+	z, _, err := zone.DecodeZone(base)
+	return z, err
+}
+
+// zoneEncoder resolves the repeatable export format; v1 remains the default.
+func zoneEncoder(format string) (func(io.Writer, *zone.ZoneVersion) error, error) {
+	switch format {
+	case "", "v1":
+		return zone.EncodeV1, nil
+	case "v2":
+		return zone.EncodeV2, nil
+	default:
+		return nil, fmt.Errorf("%w: format must be v1 or v2", errUsage)
+	}
 }
 
 // writeCapture leaves the destination untouched on failed or incomplete transfers.

@@ -16,12 +16,12 @@ const usage = `Usage:
   labelreef ctl -address IP:PORT status|reload
   labelreef ctl -address IP:PORT edit|publish FILE
   labelreef ctl -address IP:PORT sync ORIGIN
-  labelreef ctl -address IP:PORT export ORIGIN
+  labelreef ctl -address IP:PORT [-format v1|v2] export ORIGIN
   labelreef query -address IP:PORT [options] NAME TYPE
-  labelreef xfr -address IP:PORT [-base FILE] [-trace FILE] ORIGIN
-  labelreef replay [-base FILE] TRACE
+  labelreef xfr -address IP:PORT [-base FILE] [-trace FILE] [-format v1|v2] ORIGIN
+  labelreef replay [-base FILE] [-format v1|v2] TRACE
   labelreef inspect FILE
-  labelreef rewrite FILE
+  labelreef rewrite [-format v1|v2] FILE
   labelreef compare LEFT RIGHT
   labelreef state FILE
 `
@@ -56,7 +56,7 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) error {
 	case "replay":
 		return replayCommand(args[1:], out, stderr)
 	case "inspect", "rewrite":
-		return zoneCommand(args[0], args[1:], out)
+		return zoneCommand(args[0], args[1:], out, stderr)
 	case "compare":
 		return compareZones(args[1:], out)
 	case "state":

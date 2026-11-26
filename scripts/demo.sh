@@ -72,9 +72,20 @@ up() {
 
 echo '== v1 legacy seed -> canonical file -> v1 read =='
 "$binary" rewrite zones/lab-v1.json > "$work/roundtrip.json"
-expect "$("$binary" inspect "$work/roundtrip.json")" '"serial": 4294967294' '"origin": "lab.test."'
+expect "$("$binary" inspect "$work/roundtrip.json")" '"serial": 4294967294' '"origin": "lab.test."' '"format": 1'
 "$binary" rewrite "$work/roundtrip.json" > "$work/roundtrip-again.json"
 cmp "$work/roundtrip.json" "$work/roundtrip-again.json"
+
+echo '== v2 RRset seed is equivalent and exports are repeatable =='
+"$binary" rewrite -format v2 zones/lab-v1.json > "$work/roundtrip-v2.json"
+"$binary" inspect "$work/roundtrip-v2.json" | grep -F '"format": 2'
+"$binary" rewrite -format v2 "$work/roundtrip-v2.json" > "$work/roundtrip-v2-again.json"
+cmp "$work/roundtrip-v2.json" "$work/roundtrip-v2-again.json"
+expect "$("$binary" compare zones/lab-v1.json "$work/roundtrip-v2.json")" '"equal": true'
+expect "$("$binary" compare zones/lab-v2.json zones/lab-v1.json)" '"equal": true'
+# Cross-format convergence: v2 -> v1 must reproduce the canonical v1 bytes.
+"$binary" rewrite -format v1 zones/lab-v2.json > "$work/from-v2.json"
+cmp "$work/from-v2.json" "$work/roundtrip.json"
 
 "$binary" serve -config primary.json >"$work/primary.log" 2>&1 &
 primary_pid=$!
@@ -119,9 +130,16 @@ fi
 cmp "$work/wrap.json" "$work/wrap-replay.json"
 ctl "$secondary" export lab.test. > "$work/mirror-wrap.json"
 expect "$("$binary" compare "$work/wrap.json" "$work/mirror-wrap.json")" '"equal": true'
+"$binary" ctl -address "$secondary" -format v2 export lab.test. > "$work/mirror-wrap-v2.json"
+expect "$("$binary" inspect "$work/mirror-wrap-v2.json")" '"format": 2'
+expect "$("$binary" compare "$work/mirror-wrap.json" "$work/mirror-wrap-v2.json")" '"equal": true'
 expect "$(ask "$secondary_dns" www.lab.test. A)" '192.0.2.12' '192.0.2.11'
 expect "$(ask "$secondary_dns" wrapped.lab.test. TXT)" 'sequence wrapped'
 expect "$(ctl "$secondary" sync lab.test.)" '"kind": "unchanged"' '"changed": false'
+
+echo '== v2 envelope publishes the same zone as v1 =='
+"$binary" rewrite -format v2 "$work/wrap.json" > "$work/wrap-v2.json"
+expect "$(ctl "$primary" publish "$work/wrap-v2.json")" '"changed": false'
 
 echo '== retention gap -> AXFR fallback =='
 for n in 1 2 3; do
