@@ -59,9 +59,9 @@ func encodeAnswer(q query, reply lookup.Answer, tcp bool, maxUDP int) []byte {
 	if q.opt != nil {
 		limit -= optSize
 	}
-	complete := writeSets(w, reply.Answer, limit, &h.answers, true) &&
-		writeSets(w, reply.Authority, limit, &h.authority, true) &&
-		writeSets(w, reply.Additional, limit, &h.additional, reply.GlueRequired)
+	complete := writeSets(w, reply.Answer, limit, &h.answers, len(reply.Answer)) &&
+		writeSets(w, reply.Authority, limit, &h.authority, len(reply.Authority)) &&
+		writeSets(w, reply.Additional, limit, &h.additional, reply.RequiredAdditional)
 	if !complete {
 		h.flags |= flagTC
 	}
@@ -69,8 +69,12 @@ func encodeAnswer(q query, reply lookup.Answer, tcp bool, maxUDP int) []byte {
 	return w.finish(h)
 }
 
-func writeSets(w *wireWriter, sets []zone.RRset, limit int, count *uint16, required bool) bool {
-	for _, set := range sets {
+// writeSets appends RRsets in order and reports whether every required set was
+// written. Only the first required sets must be present, so trailing optional
+// sets are dropped when the wire budget runs out. Dropping optional sets never
+// truncates the response, because the fixed sections stay intact.
+func writeSets(w *wireWriter, sets []zone.RRset, limit int, count *uint16, required int) bool {
+	for i, set := range sets {
 		at := w.checkpoint()
 		fits := len(set.Records) <= int(^uint16(0)-*count)
 		if fits {
@@ -84,7 +88,7 @@ func writeSets(w *wireWriter, sets []zone.RRset, limit int, count *uint16, requi
 		}
 		if !fits {
 			w.restore(at)
-			if required {
+			if i < required {
 				return false
 			}
 			continue

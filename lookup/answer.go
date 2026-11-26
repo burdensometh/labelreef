@@ -51,7 +51,10 @@ type Answer struct {
 	Answer        []zone.RRset
 	Authority     []zone.RRset
 	Additional    []zone.RRset
-	GlueRequired  bool
+	// RequiredAdditional counts the leading Additional sets that must be written
+	// in full. If one cannot fit, the response is truncated. Later sets may be
+	// dropped silently.
+	RequiredAdditional int
 }
 
 const maxAliases = 16
@@ -91,7 +94,7 @@ func Resolve(z *zone.ZoneVersion, q Question) Answer {
 				edge := referral(z, match.Cut)
 				answer.Authority = edge.Authority
 				answer.Additional = edge.Additional
-				answer.GlueRequired = edge.GlueRequired
+				answer.RequiredAdditional = edge.RequiredAdditional
 			}
 			return answer
 		}
@@ -124,7 +127,10 @@ func Resolve(z *zone.ZoneVersion, q Question) Answer {
 		answer.Answer = append(answer.Answer, rewrite(alias, name))
 		name = alias.Records[0].Data.Target
 	}
-	answer.Additional = addressSets(z, answer.Answer, "")
+	answer.Additional = addressSets(z, answer.Answer)
+	// A positive answer has no optional additionals; keep the previous budget
+	// rule, where omitting any of them truncates the reply.
+	answer.RequiredAdditional = len(answer.Additional)
 	return answer
 }
 
@@ -158,11 +164,52 @@ func atCutDS(z *zone.ZoneVersion, owner string) Answer {
 func referral(z *zone.ZoneVersion, owner string) Answer {
 	cut, _ := z.Delegation(owner)
 	authority := []zone.RRset{cut.Servers}
-	glue := addressSets(z, authority, owner)
-	return Answer{Authority: authority, Additional: glue, GlueRequired: true}
+	required, optional := glueSets(z, authority, owner)
+	additional := append(required, optional...)
+	return Answer{
+		Authority:          authority,
+		Additional:         additional,
+		RequiredAdditional: len(required),
+	}
 }
 
-func addressSets(z *zone.ZoneVersion, source []zone.RRset, delegation string) []zone.RRset {
+// glueSets classifies name server addresses for a referral. Addresses at names
+// inside the target delegation are required for the client to reach the child.
+// Addresses held for a sibling delegation in the same parent zone are optional.
+// Targets outside the zone never receive glue.
+func glueSets(z *zone.ZoneVersion, source []zone.RRset, delegation string) (required, optional []zone.RRset) {
+	seen := make(map[string]bool)
+	for _, set := range source {
+		for _, record := range set.Records {
+			target := record.AdditionalTarget()
+			if target == "" || target == zone.Root || seen[target] || !zone.Within(target, z.Origin()) {
+				continue
+			}
+			match := z.Find(target)
+			if match.Kind == zone.Missing {
+				continue
+			}
+			var addresses []zone.RRset
+			for _, typ := range []zone.Type{zone.A, zone.AAAA} {
+				if address := z.Set(target, typ); len(address.Records) > 0 {
+					addresses = append(addresses, address)
+				}
+			}
+			if len(addresses) == 0 {
+				continue
+			}
+			seen[target] = true
+			if match.Kind == zone.Cut && match.Cut == delegation {
+				required = append(required, addresses...)
+			} else {
+				optional = append(optional, addresses...)
+			}
+		}
+	}
+	return required, optional
+}
+
+func addressSets(z *zone.ZoneVersion, source []zone.RRset) []zone.RRset {
 	seen := make(map[string]bool)
 	var result []zone.RRset
 	for _, set := range source {
@@ -172,13 +219,7 @@ func addressSets(z *zone.ZoneVersion, source []zone.RRset, delegation string) []
 				continue
 			}
 			match := z.Find(target)
-			if delegation == "" && match.Kind == zone.Cut {
-				continue
-			}
-			if delegation != "" && match.Kind == zone.Cut && match.Cut != delegation {
-				continue
-			}
-			if match.Kind == zone.Missing {
+			if match.Kind == zone.Cut || match.Kind == zone.Missing {
 				continue
 			}
 			seen[target] = true

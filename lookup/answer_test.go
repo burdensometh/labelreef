@@ -63,7 +63,7 @@ func TestDelegatedData(t *testing.T) {
 	q := Question{Name: "www.child.lab.test.", Type: zone.A, Class: zone.ClassIN}
 	reply := Resolve(version, q)
 	if reply.Authoritative || len(reply.Answer) != 0 || len(reply.Authority) != 1 ||
-		len(reply.Authority[0].Records) != 2 || len(reply.Additional) != 2 || !reply.GlueRequired {
+		len(reply.Authority[0].Records) != 2 || len(reply.Additional) != 2 || reply.RequiredAdditional != 2 {
 		t.Fatalf("unexpected referral %+v", reply)
 	}
 	for _, s := range reply.Additional {
@@ -76,5 +76,71 @@ func TestDelegatedData(t *testing.T) {
 	reply = Resolve(version, q)
 	if !reply.Authoritative || len(reply.Answer) != 1 || reply.Answer[0].Type != zone.DS {
 		t.Fatalf("expected parent DS authority, got %+v", reply)
+	}
+}
+
+// siblingZone adds a second delegation beside child.lab.test. One name server
+// is glue inside that delegation. Another points into the sibling
+// child.lab.test. delegation, whose addresses the parent zone holds. A third is
+// outside the zone.
+func siblingZone(t *testing.T) *zone.ZoneVersion {
+	t.Helper()
+	base := fixture(t)
+	for _, row := range []struct {
+		name, typ, data string
+		ttl             uint32
+	}{
+		{"second", "NS", "ns.second", 600},
+		{"second", "NS", "ns.child", 600},
+		{"second", "NS", "ns.external.example.", 600},
+		{"ns.second", "A", "192.0.2.71", 600},
+	} {
+		typ, err := zone.ParseType(row.typ)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := zone.ParseRecord(base.Origin(), row.name, row.ttl, typ, row.data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		version, err := zone.New(base.Origin(), append(base.Records(), record))
+		if err != nil {
+			t.Fatal(err)
+		}
+		base = version
+	}
+	return base
+}
+
+func TestSiblingDelegationGlueIsOptional(t *testing.T) {
+	version := siblingZone(t)
+	q := Question{Name: "www.second.lab.test.", Type: zone.A, Class: zone.ClassIN}
+	reply := Resolve(version, q)
+	if reply.Authoritative || len(reply.Answer) != 0 || len(reply.Authority) != 1 ||
+		reply.Authority[0].Name != "second.lab.test." || len(reply.Authority[0].Records) != 3 {
+		t.Fatalf("unexpected referral %+v", reply)
+	}
+	// ns.second.lab.test. sits directly in the target delegation, so its address
+	// is required. ns.child.lab.test. belongs to a sibling cut, so the parent
+	// zone's addresses for it are optional. ns.external.example. gets no glue.
+	if reply.RequiredAdditional != 1 || len(reply.Additional) != 3 {
+		t.Fatalf("glue classification: required=%d additional=%d", reply.RequiredAdditional, len(reply.Additional))
+	}
+	wanted := []string{
+		"ns.second.lab.test.|A",
+		"ns.child.lab.test.|A", "ns.child.lab.test.|AAAA",
+	}
+	for i, s := range reply.Additional {
+		if got := s.Name + "|" + s.Type.String(); got != wanted[i] {
+			t.Fatalf("additional %d = %s, want %s", i, got, wanted[i])
+		}
+	}
+	if s := reply.Additional[0]; s.Name != "ns.second.lab.test." || s.Name == reply.Authority[0].Name {
+		t.Fatalf("required glue should be inside the target delegation: %s", s.Name)
+	}
+	for _, s := range reply.Additional[reply.RequiredAdditional:] {
+		if !zone.Within(s.Name, "child.lab.test.") {
+			t.Fatalf("optional glue should be the sibling's: %s", s.Name)
+		}
 	}
 }
