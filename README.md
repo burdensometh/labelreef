@@ -12,7 +12,7 @@ go build -trimpath -o bin/labelreef ./cmd/labelreef
 bash scripts/demo.sh bin/labelreef
 ```
 
-The demo copies the example configurations and seeds into a temporary directory, starts a primary and a secondary, and asserts their socket responses. It tests v1 round trips, UDP truncation and TCP retry, initial AXFR, IXFR through `4294967295 → 0`, retention fallback, parent referral after child-zone removal, and secondary restart. Example ports are DNS `15353` and `15354`, and HTTP control `18053` and `18054`. Set `LABELREEF_DIG` to a BIND `dig` executable to run independent BIND client checks during the demo.
+The demo copies the example configurations and seeds into a temporary directory, starts a primary and a secondary, and asserts their socket responses. It tests v1 round trips, UDP truncation and TCP retry, initial AXFR, IXFR through `4294967295 → 0`, retention fallback, atomic parent/child batch publication and its stale-base rejection, parent referral after child-zone removal, and secondary restart. Example ports are DNS `15353` and `15354`, and HTTP control `18053` and `18054`. Set `LABELREEF_DIG` to a BIND `dig` executable to run independent BIND client checks during the demo.
 
 ## Operate a node
 
@@ -37,6 +37,26 @@ Start `examples/secondary.json` in its own process and drive replication with `c
 
 The service accepts numeric loopback listeners and transfer sources. The control interface is HTTP on a separate loopback port and accepts the daemon's literal host and port plus `X-Labelreef-Control: 1`. Edit and publish take JSON bodies. The intended deployment is a trusted local environment. Synchronization is initiated on demand and all content is unsigned. EDNS(0) negotiates UDP budgets. Supported stored records are A, AAAA, NS, CNAME, SOA, PTR, MX, TXT, SRV, DS and CAA. Zone selection uses the longest active suffix, with parent authority for DS at a delegation. Referrals carry in-zone address records for their name servers.
 
+## Publish a parent and child together
+
+`ctl batch FILE` applies one edit to a parent zone and one edit to its child zone in a single publication. The two zones keep separate SOA sequences; each edit names its own `origin`, `base` and `next`. Use it when a parent referral and a child answer must become visible at the same instant.
+
+```json
+{
+  "version": 1,
+  "edits": [
+    {"version": 1, "origin": "lab.test.", "base": 3, "next": 4,
+     "remove": [], "add": [{"name": "child", "type": "NS", "ttl": 600, "data": "ns2"}]},
+    {"version": 1, "origin": "child.lab.test.", "base": 17, "next": 18,
+     "remove": [], "add": [{"name": "static", "type": "A", "ttl": 120, "data": "192.0.2.164"}]}
+  ]
+}
+```
+
+`bin/labelreef ctl -address 127.0.0.1:18053 batch examples/edits/batch-parent-child-demo.json`
+
+Both members must be configured primary zones with one enclosing the other. Each base is checked against its own active serial; if either member's base disagrees, both zones are refused and neither serial moves. Both candidate state files are written in full before either becomes active, and the pair swaps under one durable journal. An in-flight transfer keeps the snapshot it started from and keeps serving the prior zone generation, including its old SOA serial, until it finishes. A process interruption that leaves the journal behind is resolved on the next start to either both prior files or both candidates. The receipt reports `parent` and `child` separately, each with its own generation, serial and `changed` flag.
+
 ## File formats
 
 - `examples/zones/lab-v1.json` is the editable v1 seed. The envelope contains `version: 1`, `origin` and `records`. Every record includes `name`, `type`, `ttl` in seconds and presentation `data`. Relative owners and domain-name fields use the origin. `@` selects the apex, and a terminal dot denotes an absolute name. Decimal escapes such as `\046` preserve literal label octets. TXT strings and CAA values can be quoted. `labelreef rewrite FILE` emits canonical v1 JSON and `labelreef inspect FILE` summarizes the zone.
@@ -56,10 +76,10 @@ bin/labelreef compare received.json replayed.json
 | --- | --- |
 | `zone/` | `New`, `Find`, `DecodeV1`, `EncodeV1` validate and index immutable zones, including empty ancestors and delegation cuts |
 | `lookup/` | `Resolve` assembles authoritative data, alias chains, negatives and referrals |
-| `serial/` | `Advance`, `Replay.Apply`, `Store.Save` guard transitions and durable history |
+| `serial/` | `Advance`, `Replay.Apply`, `Store.Stage`, `CommitBatch`, `RecoverBatch` guard transitions, durable history and atomic multi-zone state publication |
 | `transfer/` | `Build`, `TransferCursor`, `Receiver.Feed` plan and apply framed AXFR and IXFR |
 | `serve/` | `Listen`, `Client.Fetch`, `Capture`, `ReplayTrace` handle the DNS wire and TCP transport |
-| `reload/` | `Manager.Reload`, `Edit`, `Publish`, `Sync` publish active generations and route changes |
+| `reload/` | `Manager.Reload`, `Edit`, `Publish`, `PublishBatch`, `Sync` publish active generations and route changes |
 | `cmd/labelreef/` | Linux daemon, query and operational commands |
 
 A lookup holds one immutable zone. A transfer holds a single snapshot and advances its cursor after each complete frame write. A secondary stages through the terminal SOA and verifies its source and starting entry are still current before publication.

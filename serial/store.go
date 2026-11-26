@@ -63,43 +63,99 @@ func (s Store) Load(origin string) (*Snapshot, error) {
 	return snapshot, nil
 }
 
-func (s Store) Save(snapshot *Snapshot) Result {
+// Staged is a fully written candidate state file that has not yet replaced its
+// destination. Prepare runs the publication hook; Commit makes the candidate
+// visible with one rename; Abort removes an unused candidate.
+type Staged struct {
+	path   string
+	temp   string
+	digest string
+	point  PublishPoint
+	hook   func(PublishPoint) error
+}
+
+func (s Staged) Origin() string { return s.point.Origin }
+
+func (s Store) Stage(snapshot *Snapshot) (*Staged, error) {
 	if snapshot == nil || snapshot.Current() == nil {
-		return Result{Err: fmt.Errorf("cannot persist an empty snapshot")}
+		return nil, fmt.Errorf("cannot persist an empty snapshot")
 	}
 	dir := filepath.Dir(s.Path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return Result{Err: err}
+		return nil, err
 	}
 	f, err := os.CreateTemp(dir, ".labelreef-*")
 	if err != nil {
-		return Result{Err: err}
+		return nil, err
 	}
 	temp := f.Name()
-	defer os.Remove(temp)
+	discard := func(err error) (*Staged, error) {
+		f.Close()
+		os.Remove(temp)
+		return nil, err
+	}
 	writer := &stateWriter{file: f, remaining: MaxStateBytes}
 	if err := EncodeState(writer, snapshot); err != nil {
-		f.Close()
-		return Result{Err: err}
+		return discard(err)
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
-		return Result{Err: err}
+		return discard(err)
 	}
 	if err := f.Close(); err != nil {
+		os.Remove(temp)
+		return nil, err
+	}
+	digest, err := fileDigest(temp)
+	if err != nil {
+		os.Remove(temp)
+		return nil, err
+	}
+	z := snapshot.Current()
+	return &Staged{
+		path: s.Path, temp: temp, digest: digest, hook: s.BeforePublish,
+		point: PublishPoint{Origin: z.Origin(), Generation: snapshot.Generation(), Serial: z.Serial()},
+	}, nil
+}
+
+func (s *Staged) Prepare() error {
+	if s == nil || s.hook == nil {
+		return nil
+	}
+	if err := s.hook(s.point); err != nil {
+		return fmt.Errorf("before publishing %s: %w", s.point.Origin, err)
+	}
+	return nil
+}
+
+func (s *Staged) Commit() Result {
+	if s == nil || s.temp == "" {
+		return Result{Err: fmt.Errorf("candidate state is unavailable")}
+	}
+	if err := os.Rename(s.temp, s.path); err != nil {
 		return Result{Err: err}
 	}
-	if hook := s.BeforePublish; hook != nil {
-		z := snapshot.Current()
-		point := PublishPoint{Origin: z.Origin(), Generation: snapshot.Generation(), Serial: z.Serial()}
-		if err := hook(point); err != nil {
-			return Result{Err: fmt.Errorf("before publishing %s: %w", point.Origin, err)}
-		}
+	s.temp = ""
+	return Result{Published: true, Err: syncDirectory(filepath.Dir(s.path))}
+}
+
+func (s *Staged) Abort() {
+	if s == nil || s.temp == "" {
+		return
 	}
-	if err := os.Rename(temp, s.Path); err != nil {
+	os.Remove(s.temp)
+	s.temp = ""
+}
+
+func (s Store) Save(snapshot *Snapshot) Result {
+	staged, err := s.Stage(snapshot)
+	if err != nil {
 		return Result{Err: err}
 	}
-	return Result{Published: true, Err: syncDirectory(dir)}
+	defer staged.Abort()
+	if err := staged.Prepare(); err != nil {
+		return Result{Err: err}
+	}
+	return staged.Commit()
 }
 
 type stateWriter struct {

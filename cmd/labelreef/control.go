@@ -37,7 +37,7 @@ func controlCommand(ctx context.Context, args []string, out, stderr io.Writer) e
 		return err
 	}
 	var input io.Reader
-	if action == "edit" || action == "publish" {
+	if action == "edit" || action == "publish" || action == "batch" {
 		f, err := os.Open(params[0])
 		if err != nil {
 			return err
@@ -71,6 +71,8 @@ func controlCommand(ctx context.Context, args []string, out, stderr io.Writer) e
 		value = new(serve.StatusResponse)
 	case "reload":
 		value = new(reload.Status)
+	case "batch":
+		value = new(reload.BatchReceipt)
 	default:
 		value = new(reload.Receipt)
 	}
@@ -90,7 +92,7 @@ func controlRoute(action string, args []string) (string, string, error) {
 		if len(args) == 0 {
 			return http.MethodPost, "/v1/reload", nil
 		}
-	case "edit", "publish":
+	case "edit", "publish", "batch":
 		if len(args) == 1 {
 			return http.MethodPost, "/v1/" + action, nil
 		}

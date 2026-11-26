@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "edits": [
+    {
+      "version": 1,
+      "origin": "lab.test.",
+      "base": 3,
+      "next": 4,
+      "remove": [],
+      "add": [
+        {
+          "name": "child",
+          "type": "NS",
+          "ttl": 600,
+          "data": "ns2"
+        },
+        {
+          "name": "ns2",
+          "type": "A",
+          "ttl": 600,
+          "data": "192.0.2.63"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "origin": "child.lab.test.",
+      "base": 17,
+      "next": 18,
+      "remove": [],
+      "add": [
+        {
+          "name": "static",
+          "type": "A",
+          "ttl": 120,
+          "data": "192.0.2.164"
+        }
+      ]
+    }
+  ]
+}

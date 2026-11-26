@@ -15,6 +15,7 @@ const usage = `Usage:
   labelreef check -config FILE
   labelreef ctl -address IP:PORT status|reload
   labelreef ctl -address IP:PORT edit|publish FILE
+  labelreef ctl -address IP:PORT batch FILE
   labelreef ctl -address IP:PORT sync ORIGIN
   labelreef ctl -address IP:PORT export ORIGIN
   labelreef query -address IP:PORT [options] NAME TYPE

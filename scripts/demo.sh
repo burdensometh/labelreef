@@ -130,6 +130,18 @@ done
 expect "$(ctl "$secondary" sync lab.test.)" '"kind": "axfr-fallback"' '"serial": 3'
 expect "$(ask "$secondary_dns" head.lab.test. A)" '192.0.2.22'
 
+echo '== parent and child batch publication =='
+expect "$(ctl "$primary" batch edits/batch-parent-child-demo.json)" '"parent": {' '"origin": "lab.test."' '"serial": 4' '"child": {' '"origin": "child.lab.test."' '"serial": 18'
+expect "$(ask "$primary_dns" static.child.lab.test. A)" '"authoritative": true' '192.0.2.164'
+expect "$(ask "$primary_dns" ns2.lab.test. A)" '192.0.2.63'
+echo '== a stale member rejects both zones =='
+if ctl "$primary" batch edits/batch-parent-child-demo-stale.json >"$work/stale.log" 2>&1; then
+  echo 'stale batch unexpectedly succeeded' >&2
+  exit 1
+fi
+expect "$(cat "$work/stale.log")" 'differs' 'lab.test.'
+expect "$(ctl "$primary" export child.lab.test.)" 'hostmaster.child.lab.test. 18 90 30' 'static.child.lab.test.'
+
 echo '== atomic route replacement reaches the parent cut =='
 cp primary-parent-only.json primary-next.json
 mv primary-next.json primary.json

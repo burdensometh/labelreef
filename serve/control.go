@@ -81,6 +81,15 @@ func (c Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			result, err = c.Manager.Edit(edit)
 		}
+	case "/v1/batch":
+		if !body(w, r) {
+			return
+		}
+		var batch serial.BatchEditV1
+		batch, err = serial.DecodeBatchEdit(r.Body)
+		if err == nil {
+			result, err = c.Manager.PublishBatch(batch)
+		}
 	case "/v1/publish":
 		if !body(w, r) {
 			return
